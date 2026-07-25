@@ -15,6 +15,11 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Install ImageMagick
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
@@ -22,23 +27,19 @@ jobs:
 
       - name: Create .env File
         run: |
-          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
           echo "PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}" >> .env
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
           echo "ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}" >> .env
           echo "HUGGINGFACE_TOKEN=${{ secrets.HUGGINGFACE_TOKEN }}" >> .env
-          echo "API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
-          echo "PEXELS_KEY=${{ secrets.PEXELS_API_KEY }}" >> .env
-          echo "ELEVENLABS_KEY=${{ secrets.ELEVENLABS_API_KEY }}" >> .env
+          echo "IMAGEMAGICK_BINARY=/usr/bin/convert" >> .env
 
       - name: Run Short Generator
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
-          API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          PEXELS_KEY: ${{ secrets.PEXELS_API_KEY }}
-          ELEVENLABS_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          IMAGEMAGICK_BINARY: /usr/bin/convert
         run: |
           python Backend/main.py
 
