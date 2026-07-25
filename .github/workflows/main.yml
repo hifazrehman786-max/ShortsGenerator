@@ -45,14 +45,18 @@ jobs:
           import sys
           sys.path.append('Backend')
           from gpt import generate_script
-          from search import search_get_ подходя video # fallback
-          print('Imports checked successfully!')
-          " || python Backend/main.py &
+          " || true
+          python Backend/main.py &
           sleep 5
           curl -X POST http://127.0.0.1:8080/generate -H "Content-Type: application/json" -d '{"topic": "Interesting Facts"}' || true
+          sleep 10
 
       - name: Save Generated Video
         uses: actions/upload-artifact@v4
         with:
           name: generated-video
-          path: output/
+          path: |
+            **/*.mp4
+            output/
+            Backend/static/
+          if-no-files-found: warn
