@@ -41,7 +41,7 @@ jobs:
           HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
           IMAGEMAGICK_BINARY: /usr/bin/convert
         run: |
-          python Backend/main.py
+          echo -e "Interesting Facts\nyes" | python Backend/main.py
 
       - name: Save Generated Video
         uses: actions/upload-artifact@v4
