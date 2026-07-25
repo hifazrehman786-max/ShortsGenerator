@@ -2,16 +2,21 @@ name: Generate Test Short
 
 on:
   workflow_dispatch:
+    inputs:
+      topic:
+        description: 'Video kis topic par banani hai?'
+        required: false
+        default: 'Interesting facts'
 
 jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -26,11 +31,12 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          TOPIC: ${{ github.event.inputs.topic }}
         run: |
           python main.py
 
       - name: Save Generated Video
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: generated-video
           path: output/
