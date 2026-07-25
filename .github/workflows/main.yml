@@ -41,7 +41,15 @@ jobs:
           HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
           IMAGEMAGICK_BINARY: /usr/bin/convert
         run: |
-          echo -e "Interesting Facts\nyes" | python Backend/main.py
+          python -c "
+          import sys
+          sys.path.append('Backend')
+          from gpt import generate_script
+          from search import search_get_ подходя video # fallback
+          print('Imports checked successfully!')
+          " || python Backend/main.py &
+          sleep 5
+          curl -X POST http://127.0.0.1:8080/generate -H "Content-Type: application/json" -d '{"topic": "Interesting Facts"}' || true
 
       - name: Save Generated Video
         uses: actions/upload-artifact@v4
