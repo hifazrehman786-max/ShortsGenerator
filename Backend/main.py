@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import requests
@@ -462,6 +463,7 @@ def search_and_download():
 # Add audio to the video
 @app.route("/api/addAudio", methods=["POST"])
 def addAudio():
+    global GENERATING
     GENERATING = True
     data = request.get_json()
     final_video_path = data["finalVideo"]
@@ -659,7 +661,7 @@ def download_music_url():
 
 
 @app.route("/api/upload-video", methods=["POST"])
-def upload_video():
+def handle_video_upload():
     instagram_dir = os.path.join(os.path.dirname(__file__), "static/generated_videos/instagram")
     os.makedirs(instagram_dir, exist_ok=True)
 
