@@ -2,11 +2,6 @@ name: Generate Test Short
 
 on:
   workflow_dispatch:
-    inputs:
-      topic:
-        description: 'Video kis topic par banani hai?'
-        required: false
-        default: 'Interesting facts'
 
 jobs:
   generate:
@@ -31,7 +26,9 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          TOPIC: ${{ github.event.inputs.topic }}
+          API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_KEY: ${{ secrets.PEXELS_API_KEY }}
+          ELEVENLABS_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
         run: |
           python Backend/main.py
 
