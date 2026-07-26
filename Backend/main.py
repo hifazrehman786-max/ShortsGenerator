@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import subprocess
 import requests
 from datetime import datetime
@@ -1470,4 +1471,27 @@ def leadgen_enhance_profile():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host=HOST, port=PORT)
+    import sys
+    
+    # Agar GitHub Actions CLI (--cli) chalaye toh direct generation karein
+    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
+        print(colored("[*] Starting Direct HD Video Generation via CLI...", "green"))
+        
+        # Clean assets & ensure folders exist
+        create_folders()
+        clean_dir(os.path.join(os.path.dirname(__file__), "static/assets/temp/"))
+        clean_dir(os.path.join(os.path.dirname(__file__), "static/assets/subtitles/"))
+
+        # Main video generation
+        videoClass = Shorts("Interesting Facts", 1, "gpt-4o-mini", "")
+        videoClass.GenerateScript()
+        videoClass.GenerateSearchTerms()
+        videoClass.DownloadVideos([])
+        videoClass.GenerateVoice("en_us_001")
+        videoClass.CombineVideos()
+        videoClass.GenerateMetadata()
+        
+        print(colored(f"[✔] Video generated successfully at: {videoClass.get_final_video_path}", "green"))
+    else:
+        # Normal Flask Web Server Mode
+        app.run(debug=True, host=HOST, port=PORT)
