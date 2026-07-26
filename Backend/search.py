@@ -1,9 +1,13 @@
 import os
 import requests
 import urllib.parse
+import yt_dlp  # <-- NAYA ADD KIYA HAI (YouTube ke liye)
 from typing import List
 from termcolor import colored
 
+# =================================================================
+# AAPKA ORIGINAL PEXELS CODE (ISME KOI CHER-KHANI NAHI KI GAYI)
+# =================================================================
 def search_for_stock_videos(query: str, api_key: str, it: int, min_dur: int) -> List[str]:
     """
     Searches for portrait/vertical stock videos on Pexels tailored for Shorts/Reels/TikTok.
@@ -87,3 +91,45 @@ def search_for_stock_videos(query: str, api_key: str, it: int, min_dur: int) -> 
 
     print(colored(f"\t=> \"{query}\" successfully fetched {len(video_urls)} portrait videos", "cyan"))
     return video_urls
+
+
+# =================================================================
+# NAYA YT-DLP CODE (100% FREE - BINA API KEY KE GAMING VIDEOS LAANE KE LIYE)
+# =================================================================
+def search_youtube_videos(query: str, it: int = 1) -> List[str]:
+    """
+    Bina API Key ke YouTube se exact gameplay (e.g. Free Fire) search karke direct MP4 link deta hai.
+    """
+    print(colored(f"[*] Searching YouTube via yt-dlp for: '{query}'...", "cyan"))
+    
+    # ytsearch{it} ka matlab hai ke 'it' ki tadad ke mutabiq top results laye
+    search_query = f"ytsearch{it}:{query}"
+    
+    # Best single MP4 file fetch karne ki setting (Direct download nahi karega, sirf link layega)
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best', 
+        'quiet': True,
+        'no_warnings': True,
+    }
+    
+    video_urls = []
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # extract_info mein download=False rakha hai taake Pexels ki tarah sirf URL mile
+            info = ydl.extract_info(search_query, download=False)
+            
+            if 'entries' in info:
+                for entry in info['entries']:
+                    if entry.get('url'):
+                        video_urls.append(entry['url'])
+                        print(colored(f"[+] Found YouTube Video: {entry.get('title')[:50]}...", "green"))
+            elif info.get('url'):
+                video_urls.append(info['url'])
+                print(colored(f"[+] Found YouTube Video: {info.get('title')[:50]}...", "green"))
+                
+    except Exception as e:
+        print(colored(f"[-] YouTube search failed for '{query}': {e}", "red"))
+        
+    print(colored(f"\t=> \"{query}\" successfully fetched {len(video_urls)} YouTube videos", "cyan"))
+    return video_urls
+
