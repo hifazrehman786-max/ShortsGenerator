@@ -13,8 +13,11 @@ if os.path.exists(".env"):
 else:
     load_dotenv("../.env")
 
-# Check if all required environment variables are set
-check_env_vars()
+# Safe check for environment variables (Prevents NoneType crash in CLI)
+try:
+    check_env_vars()
+except Exception as env_err:
+    print(colored(f"[!] Warning checking env vars: {env_err}. Continuing safely...", "yellow"))
 
 from gpt import *
 from video import *
@@ -115,7 +118,7 @@ def download_instagram_video():
         }), 500
 
 
-# Generation Endpoint (FIXED WITH AUTO AI-MODEL FALLBACK)
+# Generation Endpoint (WITH AUTO AI-MODEL FALLBACK)
 @app.route("/api/generate", methods=["POST"])
 def generate():
     try:
@@ -130,7 +133,7 @@ def generate():
         data = request.get_json() or {}
         paragraph_number = int(data.get('paragraphNumber', 1))
         
-        # Smart AI Model Fallback (0% Quality Loss)
+        # Smart AI Model Fallback
         raw_model = data.get('aiModel', '')
         valid_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4o-mini", "g4f"]
         if raw_model in valid_models:
@@ -1478,24 +1481,20 @@ if __name__ == "__main__":
     import sys
     import argparse
     
-    # Agar Terminal ya GitHub Actions se arguments aayein:
     if len(sys.argv) > 1:
         parser = argparse.ArgumentParser(description="Automated Short Generator")
         parser.add_argument("--cli", action="store_true", help="Run in CLI mode")
         parser.add_argument("--prompt", type=str, help="Custom topic for the video", default=None)
         args, unknown = parser.parse_known_args()
 
-        # Dynamic Topic: Agar user GitHub Actions box mein kuch likhe toh wo preference le, aksar default facts
         topic_subject = args.prompt if args.prompt else "Interesting Facts"
 
         print(colored(f"[*] Starting Direct HD Video Generation for Topic: '{topic_subject}'...", "green"))
         
-        # Clean assets & ensure folders exist
         create_folders()
         clean_dir(os.path.join(os.path.dirname(__file__), "static/assets/temp/"))
         clean_dir(os.path.join(os.path.dirname(__file__), "static/assets/subtitles/"))
 
-        # Main video generation with dynamic topic
         videoClass = Shorts(topic_subject, 1, "gpt-4o-mini", "")
         videoClass.GenerateScript()
         videoClass.GenerateSearchTerms()
@@ -1506,5 +1505,4 @@ if __name__ == "__main__":
         
         print(colored(f"[✔] Video generated successfully at: {videoClass.get_final_video_path}", "green"))
     else:
-        # Normal Flask Web Server Mode
         app.run(debug=True, host=HOST, port=PORT)
