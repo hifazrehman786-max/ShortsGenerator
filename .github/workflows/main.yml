@@ -43,6 +43,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TIKTOK_SESSION_ID: ${{ secrets.TIKTOK_SESSION_ID }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY || '' }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY || '' }}   # <-- YE LINE NAYI ADD KI HAI
           IMAGEMAGICK_BINARY: /usr/bin/convert
         run: |
           PROMPT_INPUT="${{ github.event.inputs.prompt }}"
