@@ -317,39 +317,29 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
 
     video_durations = [_ffprobe_duration(p) for p in inputs]
     
-    # Strict 3-second limit enforcement as requested
+    # Strict 3-second limit enforcement with fallback safety
     effective_max_clip = 3.0 if (max_clip_duration <= 0 or max_clip_duration > 3.0) else float(max_clip_duration)
-    fallback_dur = effective_max_clip
-
-    combined_pool = list(zip(inputs, video_durations))
-    random.shuffle(combined_pool)
-    inputs = [item[0] for item in combined_pool]
-    video_durations = [item[1] for item in combined_pool]
-
-    used_up_to = [0.0] * len(inputs)
 
     segments = []
     total_segments_dur = 0.0
     safety = 0
 
+    # Ensure we loop through available inputs safely without infinite freezing
     while total_segments_dur < target_duration and safety < 2000:
         safety += 1
-        any_added = False
-
-        for i in range(len(inputs)):
+        
+        # Shuffle pool dynamically every round to maintain high variety
+        combined_pool = list(zip(inputs, video_durations))
+        random.shuffle(combined_pool)
+        
+        for vid_path, vid_dur in combined_pool:
             if total_segments_dur >= target_duration:
                 break
 
-            vid_dur = video_durations[i]
             if vid_dur <= 0:
-                vid_dur = fallback_dur
+                vid_dur = effective_max_clip
 
-            cur_pos = used_up_to[i]
-            
-            # Agar poori video use ho chuki hai, toh dubara shuru se repeat na karein balki random jagah se naya slice uthayein taaki duplicate feel na ho
-            if cur_pos >= vid_dur - 0.1:
-                cur_pos = 0.0
-
+            # Pick a safe random starting point within the clip limits
             max_start_limit = max(0.0, vid_dur - effective_max_clip)
             seg_start = random.uniform(0, max_start_limit) if max_start_limit > 0 else 0.0
             
@@ -362,13 +352,9 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
             if seg_dur > needed:
                 seg_dur = needed
 
-            segments.append((i, seg_start, seg_dur))
-            used_up_to[i] = seg_start + seg_dur
+            input_idx = inputs.index(vid_path)
+            segments.append((input_idx, seg_start, seg_dur))
             total_segments_dur += seg_dur
-            any_added = True
-
-        if not any_added:
-            break
 
     if not segments:
         print(colored("[-] No segments could be generated.", "red"))
@@ -395,8 +381,6 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
     filter_parts.append(concat_filter)
 
     filter_complex = ";".join(filter_parts)
-
-    print(colored(f"[+] ffmpeg segments with max 3s clips & dynamic zoom: {n_segments} total, {total_segments_dur:.1f}s at {target_w}x{target_h}", "cyan"))
 
     cmd = ["ffmpeg", "-y"]
     for p in inputs:
@@ -482,7 +466,6 @@ def combine_videos(video_paths: List[str], max_duration: float, max_clip_duratio
 
     import random
 
-    used_up_to = {p: 0.0 for p in valid_paths}
     clips = []
     tot_dur = 0
     safety = 0
