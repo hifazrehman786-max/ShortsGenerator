@@ -41,7 +41,7 @@ jobs:
       - name: Run Video Generator
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          TIKTOK_SESSION_ID: ${{ secrets.TIKTOK_SESSION_ID || '' }}
+          TIKTOK_SESSION_ID: ${{ secrets.TIKTOK_SESSION_ID }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY || '' }}
           IMAGEMAGICK_BINARY: /usr/bin/convert
         run: |
