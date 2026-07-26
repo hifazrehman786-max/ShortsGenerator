@@ -114,7 +114,7 @@ def download_instagram_video():
         }), 500
 
 
-# Generation Endpoint (FIXED)
+# Generation Endpoint (FIXED WITH AUTO AI-MODEL FALLBACK)
 @app.route("/api/generate", methods=["POST"])
 def generate():
     try:
@@ -128,7 +128,16 @@ def generate():
         # Parse JSON safely
         data = request.get_json() or {}
         paragraph_number = int(data.get('paragraphNumber', 1))
-        ai_model = data.get('aiModel', 'gpt-3.5-turbo')
+        
+        # Smart AI Model Fallback (0% Quality Loss)
+        raw_model = data.get('aiModel', '')
+        valid_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4o-mini", "g4f"]
+        if raw_model in valid_models:
+            ai_model = raw_model
+        else:
+            print(colored(f"[!] Invalid or empty AI model '{raw_model}'. Auto-fallback to top quality model 'gpt-4o-mini'", "yellow"))
+            ai_model = "gpt-4o-mini"
+
         n_threads = data.get('threads')
         subtitles_position = data.get('subtitlesPosition')
 
@@ -270,10 +279,14 @@ def generate_script_only():
     clean_dir(os.path.join(os.path.dirname(__file__), "static/assets/subtitles/"))
     print(colored("[+] Received script request...", "green"))
 
-    data = request.get_json()
-    video_subject = data["videoSubject"]
-    extra_prompt = data["extraPrompt"]
-    ai_model = data["aiModel"]
+    data = request.get_json() or {}
+    video_subject = data.get("videoSubject", "")
+    extra_prompt = data.get("extraPrompt", "")
+    
+    raw_model = data.get("aiModel", "")
+    valid_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4o-mini", "g4f"]
+    ai_model = raw_model if raw_model in valid_models else "gpt-4o-mini"
+    
     script_template = data.get("scriptTemplate", "")
 
     videoClass = Shorts(video_subject, 1, ai_model, "", extra_prompt=extra_prompt, script_template=script_template)
@@ -299,11 +312,15 @@ def search_and_download():
 
     print(colored("[+] Received search and download request...", "green"))
 
-    data = request.get_json()
-    search_terms = data["search"]
-    script = data["script"]
-    ai_model = data["aiModel"]
-    voice = data["voice"]
+    data = request.get_json() or {}
+    search_terms = data.get("search", [])
+    script = data.get("script", "")
+    
+    raw_model = data.get("aiModel", "")
+    valid_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4o-mini", "g4f"]
+    ai_model = raw_model if raw_model in valid_models else "gpt-4o-mini"
+
+    voice = data.get("voice", "en_us_001")
     selectedVideoUrls = data.get("selectedVideoUrls", [])
     directVideoPaths = data.get("directVideoPaths", [])
     use_music = data.get("useMusic", False)
@@ -408,10 +425,14 @@ def search_and_download():
 def addAudio():
     global GENERATING
     GENERATING = True
-    data = request.get_json()
-    final_video_path = data["finalVideo"]
+    data = request.get_json() or {}
+    final_video_path = data.get("finalVideo", "")
     song_path = data.get("songPath", "")
-    ai_model = data.get("aiModel", "g4f")
+    
+    raw_model = data.get("aiModel", "")
+    valid_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4o-mini", "g4f"]
+    ai_model = raw_model if raw_model in valid_models else "gpt-4o-mini"
+
     music_source = data.get("musicSource", "library")
     background_music_from_video = data.get("backgroundMusicFromVideo", "")
     aspect_ratio = data.get("aspectRatio", "9:16")
@@ -531,7 +552,7 @@ def download_music_url():
     os.makedirs(music_dir, exist_ok=True)
     os.makedirs(temp_dir, exist_ok=True)
 
-    data = request.get_json()
+    data = request.get_json() or {}
     url = data.get("url", "").strip()
     if not url:
         return jsonify({"status": "error", "message": "No URL provided"}), 400
@@ -662,7 +683,7 @@ def upload_image():
 
 @app.route("/api/extract-frame", methods=["POST"])
 def extract_frame():
-    data = request.get_json()
+    data = request.get_json() or {}
     video_filename = data.get("videoFilename", "")
     video_url = data.get("videoUrl", "")
     timestamp = float(data.get("timestamp", 0.0))
@@ -842,7 +863,7 @@ def get_global_settings():
 
 @app.route("/api/settings", methods=["POST"])
 def update_global_settings():
-    data = request.get_json()
+    data = request.get_json() or {}
     setting_type = data.get("type", "FONT")
     settings = data.get("settings", {})
     update_settings(settings, setting_type)
@@ -885,7 +906,7 @@ def get_tts_voices():
 @app.route("/api/magicsync/accounts", methods=["POST"])
 def magicsync_accounts():
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         url = data.get("url", os.getenv("MAGICSYNC_BASE_URL", "http://localhost:3000"))
         api_token = data.get("apiToken", os.getenv("MAGICSYNC_API_TOKEN", ""))
 
@@ -930,7 +951,7 @@ def serve_video(filename):
 @app.route("/api/schedule-to-magicsync", methods=["POST"])
 def schedule_to_magicsync():
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         video_filename = data.get("videoFilename")
         scheduled_at = data.get("scheduledAt")
         content = data.get("content", "")
@@ -1001,7 +1022,7 @@ def schedule_to_magicsync():
 
 @app.route("/api/video/delete", methods=["POST"])
 def delete_video():
-    data = request.get_json()
+    data = request.get_json() or {}
     filename = data.get("filename", "")
     if not filename:
         return jsonify({"status": "error", "message": "filename is required"}), 400
@@ -1065,7 +1086,7 @@ def leadgen_twitter_profile():
 @app.route("/api/leadgen/scrape-url", methods=["POST"])
 def leadgen_scrape_url():
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         url = data.get("url", "")
         if not url:
             return jsonify({"status": "error", "message": "url is required"}), 400
@@ -1081,7 +1102,7 @@ def leadgen_scrape_url():
 @app.route("/api/leadgen/campaign/enrich", methods=["POST"])
 def leadgen_enrich_campaign():
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         description = data.get("description", "")
         website_data = data.get("website_data")
         if not description:
@@ -1101,7 +1122,7 @@ def leadgen_campaigns():
         return jsonify({"status": "ok", "data": get_campaigns()})
 
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         name = data.get("name", "")
         description = data.get("description", "")
         keywords = data.get("keywords", [])
@@ -1137,7 +1158,7 @@ def leadgen_add_lead(campaign_id):
         campaign = get_campaign(campaign_id)
         if not campaign:
             return jsonify({"status": "error", "message": "Campaign not found"}), 404
-        data = request.get_json()
+        data = request.get_json() or {}
         lead = add_lead(campaign_id, data)
         return jsonify({"status": "ok", "data": lead})
     except Exception as e:
@@ -1154,7 +1175,7 @@ def leadgen_campaign_competitors(campaign_id):
         return jsonify({"status": "ok", "data": campaign.get("competitors", [])})
 
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         name = data.get("name", "")
         url = data.get("url", "")
         if not name:
@@ -1201,7 +1222,7 @@ def leadgen_campaign_viral_posts(campaign_id):
         return jsonify({"status": "ok", "data": campaign.get("viral_posts", [])})
 
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         post_text = data.get("post_text", "")
         post_url = data.get("post_url", "")
         username = data.get("username", "")
@@ -1438,7 +1459,7 @@ def leadgen_campaign_search_leads(campaign_id):
 @app.route("/api/leadgen/enhance-profile", methods=["POST"])
 def leadgen_enhance_profile():
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         profile = data.get("profile", {})
         if not profile:
             return jsonify({"status": "error", "message": "profile data is required"}), 400
