@@ -1,7 +1,6 @@
 import re
 import json
 import g4f
-from g4f.models import Model, ModelUtils
 from typing import Tuple, List  
 from termcolor import colored
 from dotenv import load_dotenv
@@ -29,52 +28,60 @@ def generate_response(prompt: str, ai_model: str) -> str:
     Generate a script for a video, depending on the subject of the video.
 
     Args:
-        video_subject (str): The subject of the video.
+        prompt (str): The prompt for generation.
         ai_model (str): The AI model to use for generation.
 
     Returns:
         str: The response from the AI model.
     """
 
-    if ai_model == 'g4f':
+    # Model name normalise / auto-fix karein taake ghalti na ho
+    model_key = str(ai_model).lower().strip()
+
+    if model_key in ['g4f', 'gpt-4o-mini', 'gpt-4o', 'g4f-gemini']:
         from g4f.client import Client as G4FClient
         from g4f import Provider
         g4f_client = G4FClient(provider=Provider.Gemini)
         response = g4f_client.chat.completions.create(
-            model="gemini-3.5-flash",
+            model="gemini-1.5-flash",
             messages=[{"role": "user", "content": prompt}],
             web_search=False
         )
         return response.choices[0].message.content
 
-    elif ai_model == 'gemmini':
+    elif model_key in ['gemini', 'gemmini', 'google', 'gemini-1.5-flash', 'gemini-2.0-flash']:
         if client is None:
             raise ValueError("GOOGLE_API_KEY not configured")
         response = client.models.generate_content(
             model='gemini-2.0-flash',
             contents=prompt
         ).text
+        return response
 
     else:
-        raise ValueError("Invalid AI model selected.")
-
-    return response
-
+        # Default fallback standard gemini call par bhej dein taake execution fail na ho
+        if client:
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt
+            ).text
+            return response
+        else:
+            from g4f.client import Client as G4FClient
+            from g4f import Provider
+            g4f_client = G4FClient(provider=Provider.Gemini)
+            response = g4f_client.chat.completions.create(
+                model="gemini-1.5-flash",
+                messages=[{"role": "user", "content": prompt}],
+                web_search=False
+            )
+            return response.choices[0].message.content
 
 
 def get_search_terms(video_subject: str, amount: int, script: str, ai_model: str) -> List[str]:
     """
     Generate a JSON-Array of search terms for stock videos,
     depending on the subject of a video.
-
-    Args:
-        video_subject (str): The subject of the video.
-        amount (int): The amount of search terms to generate.
-        script (str): The script of the video.
-        ai_model (str): The AI model to use for generation.
-
-    Returns:
-        List[str]: The search terms for the video subject.
     """
 
     # Build prompt
@@ -103,16 +110,11 @@ def get_search_terms(video_subject: str, amount: int, script: str, ai_model: str
     Please note that you must use English for generating video search terms; Chinese is not accepted.
     """.strip()
 
-
-    # Let user know
     print(colored(f"Generating {amount} search terms for {video_subject}...", "cyan"))
 
-    # Generate search terms
     response = generate_response(prompt, ai_model)
 
-    # Let user know
     print(colored(f"Response: {response}", "cyan"))
-    # Parse response into a list of search terms
     search_terms = []
     
     try:
@@ -123,7 +125,6 @@ def get_search_terms(video_subject: str, amount: int, script: str, ai_model: str
     except (json.JSONDecodeError, ValueError):
         print(colored("[*] GPT returned an unformatted response. Attempting to clean...", "yellow"))
 
-        # Attempt to extract list-like string and convert to list
         match = re.search(r'\["(?:[^"\\]|\\.)*"(?:,\s*"[^"\\]*")*\]', response)
         if match:
             try:
@@ -132,29 +133,15 @@ def get_search_terms(video_subject: str, amount: int, script: str, ai_model: str
                 print(colored("[-] Could not parse response.", "red"))
                 return []
 
-
-
-    # Let user know
     print(colored(f"\nGenerated {len(search_terms)} search terms: {', '.join(search_terms)}", "cyan"))
-
-    # Return search terms
     return search_terms
 
 
 def generate_metadata(video_subject: str, script: str, ai_model: str) -> Tuple[str, str, List[str], str]:  
     """  
     Generate metadata for a YouTube video, including the title, description, keywords, and social post content.  
-
-    Args:  
-        video_subject (str): The subject of the video.  
-        script (str): The script of the video.  
-        ai_model (str): The AI model to use for generation.  
-
-    Returns:  
-        Tuple[str, str, List[str], str]: The title, description, keywords, and post content for the video.  
     """  
 
-    # Build prompt for title  
     title_prompt = f"""  
     You are an expert YouTube Shorts title writer. Generate a single catchy, SEO-optimized title for a video based on the following script.  
     The title must be attention-grabbing, under 60 characters, and directly reflect the content of the script.  
@@ -166,10 +153,8 @@ def generate_metadata(video_subject: str, script: str, ai_model: str) -> Tuple[s
     {script}  
     """  
 
-    # Generate title  
     title = generate_response(title_prompt, ai_model).strip().strip('"').strip("'")  
     
-    # Build prompt for description  
     description_prompt = f"""  
     You are an expert YouTube Shorts description writer. Write a brief, engaging description for a video based on the following script.  
     The description should include relevant hashtags and be optimized for discovery.  
@@ -181,13 +166,9 @@ def generate_metadata(video_subject: str, script: str, ai_model: str) -> Tuple[s
     {script}  
     """  
 
-    # Generate description  
     description = generate_response(description_prompt, ai_model).strip()  
-
-    # Generate keywords  
     keywords = get_search_terms(video_subject, 6, script, ai_model)  
 
-    # Generate social media post content  
     post_prompt = f"""  
     You are an expert social media content writer. Write a short, engaging post to promote this video on social platforms like YouTube, TikTok, or Instagram.  
     The post should grab attention, use line breaks, and end with a call to action. Keep it under 280 characters.  
