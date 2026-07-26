@@ -7,13 +7,12 @@ from utils import *
 from dotenv import load_dotenv
 
 # Load environment variables
-# check if .env is in the folder or look one more level up
 if os.path.exists(".env"):
     load_dotenv(".env")
 else:
     load_dotenv("../.env")
+
 # Check if all required environment variables are set
-# This must happen before importing video which uses API keys without checking
 check_env_vars()
 
 from gpt import *
@@ -32,14 +31,22 @@ from werkzeug.utils import secure_filename
 from moviepy.config import change_settings
 from classes.instagram_downloader import InstagramDownloader
 from leadgen.adapters.devtools_adapter import DevToolsAdapter
-from leadgen.enrichment import enrich_campaign_description, enrich_campaign_with_website, enhance_profile_analysis, find_related_niche_queries, suggest_engagement, analyze_competitor, analyze_viral_post, generate_lead_keywords, generate_engagement_keywords, generate_synthetic_leads, qualify_search_results
-from leadgen.campaign_store import create_campaign, get_campaigns, get_campaign, delete_campaign, add_lead, get_leads, add_competitor, remove_competitor, add_viral_post
+from leadgen.enrichment import (
+    enrich_campaign_description, enrich_campaign_with_website, 
+    enhance_profile_analysis, find_related_niche_queries, 
+    suggest_engagement, analyze_competitor, analyze_viral_post, 
+    generate_lead_keywords, generate_engagement_keywords, 
+    generate_synthetic_leads, qualify_search_results
+)
+from leadgen.campaign_store import (
+    create_campaign, get_campaigns, get_campaign, delete_campaign, 
+    add_lead, get_leads, add_competitor, remove_competitor, add_viral_post
+)
 
 # Set environment variables
 SESSION_ID = os.getenv("TIKTOK_SESSION_ID")
 openai_api_key = os.getenv('OPENAI_API_KEY')
 change_settings({"IMAGEMAGICK_BINARY": os.getenv("IMAGEMAGICK_BINARY")})
-
 
 # Initialize Flask
 app = Flask(__name__, static_folder="static", static_url_path="/static")
@@ -54,7 +61,7 @@ PORT = 8080
 AMOUNT_OF_STOCK_VIDEOS = 5
 GENERATING = False
 
-# Create a method to create all the required folders
+# Create required folders
 def create_folders():
     """Create all required folders for the application"""
     folders = [
@@ -72,7 +79,6 @@ def create_folders():
         os.makedirs(folder_path, exist_ok=True)
         print(f"Created/verified folder: {folder_path}")
 
-# Create folders
 create_folders()
 
 # Instagram video download endpoint
@@ -88,13 +94,11 @@ def download_instagram_video():
                 "message": "No Instagram URL provided",
             }), 400
 
-        # Initialize downloader with output path in static/assets
         downloader = InstagramDownloader(
             output_path=os.path.join(os.path.dirname(__file__), "static/generated_videos/instagram"),
             cookies_from_browser='chrome',
         )
         
-        # Download the video
         result = downloader.download_video(video_url)
         
         return jsonify({
@@ -110,57 +114,46 @@ def download_instagram_video():
         }), 500
 
 
-# Generation Endpoint
+# Generation Endpoint (FIXED)
 @app.route("/api/generate", methods=["POST"])
 def generate():
     try:
-        # Set global variable
         global GENERATING
         GENERATING = True
 
-        # Clean
+        # Clean temp paths
         clean_dir(os.path.join(os.path.dirname(__file__), "static/assets/temp/"))
         clean_dir(os.path.join(os.path.dirname(__file__), "static/assets/subtitles/"))
 
+        # Parse JSON safely
+        data = request.get_json() or {}
+        paragraph_number = int(data.get('paragraphNumber', 1))
+        ai_model = data.get('aiModel', 'gpt-3.5-turbo')
+        n_threads = data.get('threads')
+        subtitles_position = data.get('subtitlesPosition')
 
-        # Parse JSON
-        data = request.get_json()
-        paragraph_number = int(data.get('paragraphNumber', 1))  # Default to 1 if not provided
-        ai_model = data.get('aiModel')  # Get the AI model selected by the user
-        n_threads = data.get('threads')  # Amount of threads to use for video generation
-        subtitles_position = data.get('subtitlesPosition')  # Position of the subtitles in the video
-
-        # Get 'useMusic' from the request data and default to False if not provided
         use_music = data.get('useMusic', False)
-
-        # Get 'automateYoutubeUpload' from the request data and default to False if not provided
         automate_youtube_upload = data.get('automateYoutubeUpload', False)
-        # Print little information about the video which is to be generated
+
+        video_subject = data.get("videoSubject", "")
+        custom_prompt = data.get("customPrompt", "")
+
         print(colored("[Video to be generated]", "blue"))
-        print(colored("   Subject: " + data["videoSubject"], "blue"))
-        print(colored("   AI Model: " + ai_model, "blue"))  # Print the AI model being used
-        print(colored("   Custom Prompt: " + data["customPrompt"], "blue"))  # Print the AI model being used
-
-
+        print(colored(f"   Subject: {video_subject}", "blue"))
+        print(colored(f"   AI Model: {ai_model}", "blue"))
+        print(colored(f"   Custom Prompt: {custom_prompt}", "blue"))
 
         if not GENERATING:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Video generation was cancelled.",
-                    "data": [],
-                }
-            )
+            return jsonify({
+                "status": "error",
+                "message": "Video generation was cancelled.",
+                "data": [],
+            })
         
-        voice = data["voice"]
-        voice_prefix = voice[:2]
-
-
+        voice = data.get("voice", "en_us_001")
         if not voice:
             print(colored("[!] No voice was selected. Defaulting to \"en_us_001\"", "yellow"))
             voice = "en_us_001"
-            voice_prefix = voice[:2]
-
 
         script_template = data.get("scriptTemplate", "")
         selectedVideoUrls = data.get("selectedVideoUrls", [])
@@ -169,11 +162,12 @@ def generate():
         image_duration = data.get("imageDuration", 5.0)
         image_durations = data.get("imageDurations", [])
         clip_duration = int(data.get("clipDuration", 10))
-        videoClass = Shorts(data["videoSubject"], paragraph_number, ai_model, data["customPrompt"], script_template=script_template)
+
+        videoClass = Shorts(video_subject, paragraph_number, ai_model, custom_prompt, script_template=script_template)
         videoClass.clip_duration = clip_duration
-        # Generate a script
+        
+        # Generate script & search terms
         videoClass.GenerateScript()
-        # Generate search terms
         videoClass.GenerateSearchTerms()
 
         if directVideoPaths and len(directVideoPaths) > 0:
@@ -200,98 +194,77 @@ def generate():
             print(colored(f"[+] Using {len(resolved_images)} image(s) with durations: {resolved_durations}", "green"))
 
         if not GENERATING:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Video generation was cancelled.",
-                    "data": [],
-                }
-            )
+            return jsonify({
+                "status": "error",
+                "message": "Video generation was cancelled.",
+                "data": [],
+            })
 
         videoClass.GenerateVoice(voice)
-        # Concatenate videos
         videoClass.CombineVideos()
-
         videoClass.GenerateMetadata()
 
+        # YouTube Upload (Safe Execution)
         if automate_youtube_upload:
-            # Start Youtube Uploader
-            # Check if the CLIENT_SECRETS_FILE exists
             client_secrets_file = os.path.abspath("./client_secret.json")
-            SKIP_YT_UPLOAD = False
             if not os.path.exists(client_secrets_file):
-                SKIP_YT_UPLOAD = True
                 print(colored("[-] Client secrets file missing. YouTube upload will be skipped.", "yellow"))
-                print(colored("[-] Please download the client_secret.json from Google Cloud Platform and store this inside the /Backend directory.", "red"))
-
-            # Only proceed with YouTube upload if the toggle is True  and client_secret.json exists.
-            if not SKIP_YT_UPLOAD:
-                # Choose the appropriate category ID for your videos
-                video_category_id = "28"  # Science & Technology
-                privacyStatus = "private"  # "public", "private", "unlisted"
-                video_metadata = {
-                    'video_path': os.path.abspath(f"../temp/{final_video_path}"),
-                    'title': title,
-                    'description': description,
-                    'category': video_category_id,
-                    'keywords': ",".join(keywords),
-                    'privacyStatus': privacyStatus,
-                }
-
-                # Upload the video to YouTube
+            else:
                 try:
-                    # Unpack the video_metadata dictionary into individual arguments
+                    title = getattr(videoClass, 'video_title', video_subject or 'Generated Short')
+                    description = getattr(videoClass, 'video_description', '')
+                    keywords = getattr(videoClass, 'video_tags', [])
+                    
                     video_response = upload_video(
-                        video_path=video_metadata['video_path'],
-                        title=video_metadata['title'],
-                        description=video_metadata['description'],
-                        category=video_metadata['category'],
-                        keywords=video_metadata['keywords'],
-                        privacy_status=video_metadata['privacyStatus']
+                        video_path=videoClass.get_final_video_path,
+                        title=title,
+                        description=description,
+                        category="28",
+                        keywords=",".join(keywords) if isinstance(keywords, list) else str(keywords),
+                        privacy_status="private"
                     )
                     print(f"Uploaded video ID: {video_response.get('id')}")
                 except HttpError as e:
                     print(f"An HTTP error {e.resp.status} occurred:\n{e.content}")
+                except Exception as e:
+                    print(colored(f"[-] YouTube upload error: {str(e)}", "red"))
 
-        
         videoClass.AddMusic(use_music)
-        # Let user know
         print(colored(f"[+] Video generated: {videoClass.get_final_video_path}!", "green"))
         videoClass.Stop()
 
-        final_video_path = "/static" + videoClass.get_final_video_path.split("/static")[1]
-        # Return JSON
-        return jsonify(
-            {
-                "status": "success",
-                "message": "Video generated! See MoneyPrinter/output.mp4 for result.",
-                "data": final_video_path,
-            }
-        )
+        final_path_raw = videoClass.get_final_video_path
+        if final_path_raw and "/static" in final_path_raw:
+            final_video_path = "/static" + final_path_raw.split("/static")[1]
+        else:
+            final_video_path = final_path_raw or ""
+
+        return jsonify({
+            "status": "success",
+            "message": "Video generated successfully!",
+            "data": final_video_path,
+        })
+
     except Exception as err:
         print(colored(f"[-] Error: {str(err)}", "red"))
-        return jsonify(
-            {
-                "status": "error",
-                "message": f"Could not retrieve stock videos: {str(err)}",
-                "data": [],
-            }
-        )
+        return jsonify({
+            "status": "error",
+            "message": f"Generation failed: {str(err)}",
+            "data": [],
+        })
 
 
 @app.route("/api/cancel", methods=["POST"])
 def cancel():
     print(colored("[!] Received cancellation request...", "yellow"))
-
     global GENERATING
     GENERATING = False
-
     return jsonify({"status": "success", "message": "Cancelled video generation."})
 
-# Route to generate the script and return the video script
+
 @app.route("/api/script", methods=["POST"])
 def generate_script_only():
-    # Set generating to true
+    global GENERATING
     GENERATING = True
 
     clean_dir(os.path.join(os.path.dirname(__file__), "static/assets/subtitles/"))
@@ -305,33 +278,25 @@ def generate_script_only():
 
     videoClass = Shorts(video_subject, 1, ai_model, "", extra_prompt=extra_prompt, script_template=script_template)
     script = videoClass.GenerateScript()
-
-
-
     search_terms = videoClass.GenerateSearchTerms()
     
-    # Show the search terms 
     print(colored(f"Search terms: {', '.join(search_terms)}", "cyan"))
 
-    return jsonify(
-        {
-            "status": "success",
-            "message": "Script generated!",
-            "data": {
-                "script": script,
-                "search": search_terms
-            },
-        }
-    )
+    return jsonify({
+        "status": "success",
+        "message": "Script generated!",
+        "data": {
+            "script": script,
+            "search": search_terms
+        },
+    })
 
-# Download the videos and split the script
+
 @app.route("/api/search-and-download", methods=["POST"])
 def search_and_download():
-    # Set generating to true
     global GENERATING
     GENERATING = True
 
-    
     print(colored("[+] Received search and download request...", "green"))
 
     data = request.get_json()
@@ -339,17 +304,11 @@ def search_and_download():
     script = data["script"]
     ai_model = data["aiModel"]
     voice = data["voice"]
-    selectedVideoUrls = data.get("selectedVideoUrls",[])
+    selectedVideoUrls = data.get("selectedVideoUrls", [])
     directVideoPaths = data.get("directVideoPaths", [])
     use_music = data.get("useMusic", False)
 
-    # Extra options:
-    custom_video = data.get("videoUrls",[])
-    custom_voice = data.get("voiceUrl","")
-    # Set the default subtitles_position to the center, bottom
     subtitles_position = data.get("subtitlesPosition", "center,bottom")
-    n_threads = data.get('threads', 4)
-    # Subtitle template, aspect ratio
     subtitle_template = data.get("subtitleTemplate", "classic")
     aspect_ratio = data.get("aspectRatio", "9:16")
     custom_subtitle = data.get("customSubtitle", "")
@@ -363,7 +322,7 @@ def search_and_download():
     if not voice:
         print(colored("[!] No voice was selected. Defaulting to \"en_us_001\"", "yellow"))
         voice = "en_us_001"
-    # Search for a video of the given search term
+
     videoClass = Shorts("", 1, ai_model, '', script_template=data.get("scriptTemplate", ""))
     videoClass.search_terms = search_terms
     videoClass.final_script = script
@@ -394,7 +353,6 @@ def search_and_download():
         videoClass.image_paths = resolved_images
         videoClass.image_durations = resolved_durations
         videoClass.image_duration = float(image_duration) if image_duration else 5.0
-        print(colored(f"[+] Using {len(resolved_images)} image(s) with durations: {resolved_durations}", "green"))
 
     tts_quality = data.get("quality", 8)
     tts_speed = data.get("speed", 1.05)
@@ -402,10 +360,9 @@ def search_and_download():
     if tts_lang:
         from settings import update_tts_settings
         update_tts_settings({"tts_lang": tts_lang})
+
     videoClass.GenerateVoice(voice, custom_audio_path=custom_audio_path, audio_start_time=audio_start_time, audio_end_time=audio_end_time, quality=tts_quality, speed=tts_speed)
-
     videoClass.CombineVideos()
-
     videoClass.GenerateMetadata()
     
     if use_music:
@@ -413,54 +370,40 @@ def search_and_download():
 
     videoClass.Stop()
 
-
-
-    # FInal videoClass.get_final_video_path
-    print(colored(f"[X] Next FInal video: {videoClass.get_final_video_path}", "green"))
-    # if final video path is None return status code 500
     if videoClass.get_final_video_path is None:
-        return jsonify(
-            {
-                "status": "error",
-                "message": "Video generation was cancelled.",
-                "data": [],
-            }
-        ),500
+        return jsonify({
+            "status": "error",
+            "message": "Video generation was cancelled.",
+            "data": [],
+        }), 500
     
-    # Use music video path if music was added
     if use_music and videoClass.get_final_music_video_path:
         final_video_raw = os.path.abspath(os.path.join(os.path.dirname(__file__), "static", "generated_videos", videoClass.get_final_music_video_path))
     else:
         final_video_raw = videoClass.get_final_video_path
 
-    # /home/myuser/MoneyPrinter/Backend/static  -> need to return only  /static/**
     final_video_path = "/static" + final_video_raw.split("/static")[1]
-    
-    # We also have the TTS path and subtitles path, which should be returned as paths accessible via standard static hosting
     final_audio_path = "/static" + videoClass.get_tts_path.split("/static")[1] if videoClass.get_tts_path else None
     final_subtitles_path = "/static" + videoClass.get_subtitles_path.split("/static")[1] if videoClass.get_subtitles_path else None
 
-    return jsonify(
-        {
-            "status": "success",
-            "message": "Search and download complete!",
-            "data": {
-                "finalAudio": final_audio_path,
-                "subtitles": final_subtitles_path,
-                # Should remove the complete path and just leave the 
-                "finalVideo": final_video_path,
-                "metadata": {
-                    "title": videoClass.video_title,
-                    "description": videoClass.video_description,
-                    "tags": videoClass.video_tags if hasattr(videoClass, 'video_tags') else [],
-                    "post_content": videoClass.video_post_content if hasattr(videoClass, 'video_post_content') else "",
-                    "suggested_schedule": videoClass.suggested_schedule if hasattr(videoClass, 'suggested_schedule') else ""
-                }
+    return jsonify({
+        "status": "success",
+        "message": "Search and download complete!",
+        "data": {
+            "finalAudio": final_audio_path,
+            "subtitles": final_subtitles_path,
+            "finalVideo": final_video_path,
+            "metadata": {
+                "title": getattr(videoClass, 'video_title', ''),
+                "description": getattr(videoClass, 'video_description', ''),
+                "tags": getattr(videoClass, 'video_tags', []),
+                "post_content": getattr(videoClass, 'video_post_content', ''),
+                "suggested_schedule": getattr(videoClass, 'suggested_schedule', '')
             }
         }
-    )
+    })
 
-# Add audio to the video
+
 @app.route("/api/addAudio", methods=["POST"])
 def addAudio():
     global GENERATING
@@ -489,53 +432,44 @@ def addAudio():
                     if local_video and os.path.exists(local_video):
                         actual_song_path = local_video
                     else:
-                        return jsonify(
-                            {
-                                "status": "error",
-                                "message": "Could not download the source video to extract audio.",
-                                "data": [],
-                            }
-                        ), 400
-                except Exception as e:
-                    return jsonify(
-                        {
+                        return jsonify({
                             "status": "error",
-                            "message": f"Error downloading source video: {str(e)}",
+                            "message": "Could not download the source video to extract audio.",
                             "data": [],
-                        }
-                    ), 500
+                        }), 400
+                except Exception as e:
+                    return jsonify({
+                        "status": "error",
+                        "message": f"Error downloading source video: {str(e)}",
+                        "data": [],
+                    }), 500
             else:
                 actual_song_path = background_music_from_video
         else:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "No source video selected for music extraction.",
-                    "data": [],
-                }
-            ), 400
+            return jsonify({
+                "status": "error",
+                "message": "No source video selected for music extraction.",
+                "data": [],
+            }), 400
 
     videoClass.AddMusic(True, actual_song_path, music_source=music_source if music_source == "video" else "library")
 
     videoClass.Stop()
     final_music_path = videoClass.get_final_music_video_path
     if not final_music_path:
-        return jsonify(
-            {
-                "status": "error",
-                "message": "Could not add music to the video.",
-                "data": [],
-            }
-        ), 500
-    return jsonify(
-        {
-            "status": "success",
-            "message": "Music added to the video successfully.",
-            "data": {
-                "finalVideo": "static/generated_videos/" + final_music_path
-            }
+        return jsonify({
+            "status": "error",
+            "message": "Could not add music to the video.",
+            "data": [],
+        }), 500
+
+    return jsonify({
+        "status": "success",
+        "message": "Music added to the video successfully.",
+        "data": {
+            "finalVideo": "static/generated_videos/" + final_music_path
         }
-    )
+    })
 
 
 @app.route("/api/upload-custom-audio", methods=["POST"])
@@ -582,7 +516,7 @@ def upload_music():
     allowed_ext = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".wma"}
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in allowed_ext:
-        return jsonify({"status": "error", "message": f"Unsupported audio format: {ext}. Allowed: {', '.join(allowed_ext)}"}), 400
+        return jsonify({"status": "error", "message": f"Unsupported audio format: {ext}."}), 400
 
     filename = secure_filename(file.filename)
     file.save(os.path.join(music_dir, filename))
@@ -606,7 +540,6 @@ def download_music_url():
         import yt_dlp
         import subprocess
         import uuid
-        import shutil
 
         print(colored(f"[X] Downloading video from: {url}", "blue"))
 
@@ -625,7 +558,6 @@ def download_music_url():
             title = info.get("title", "audio")
 
         if not os.path.exists(video_path):
-            # try with mkv extension (yt-dlp merges to mkv sometimes)
             base = os.path.splitext(video_path)[0]
             for ext in [".mkv", ".webm", ".mp4"]:
                 candidate = base + ext
@@ -798,19 +730,16 @@ def extract_frame():
                 pass
 
 
-# Get all available songs
 @app.route("/api/getSongs", methods=["GET"])
 def get_songs():
     songs = os.listdir(os.path.join(os.path.dirname(__file__), "static/assets/music"))
     return jsonify({
         "status": "success",
         "message": "Songs retrieved successfully!",
-        "data": {
-            "songs": songs
-        }
+        "data": {"songs": songs}
     })
 
-# Get all available videos
+
 @app.route("/api/getVideos", methods=["GET"])
 def get_videos():
     generated_dir = os.path.join(os.path.dirname(__file__), "static/generated_videos")
@@ -850,33 +779,26 @@ def get_videos():
                     "url": f"/api/video/instagram/{f}",
                     "metadata": metadata
                 })
-    return jsonify(
-        {
+    return jsonify({
         "status": "success",
         "message": "Videos retrieved successfully!",
         "data": {
             "videos": video_list,
             "instagram": instagram_videos
-            }
         }
-    )
+    })
 
-# Get all available subtitles
+
 @app.route("/api/getSubtitles", methods=["GET"])
 def get_subtitles():
     subtitles = os.listdir(os.path.join(os.path.dirname(__file__), "static/assets/subtitles"))
-    return jsonify(
-        {
+    return jsonify({
         "status": "success",
-        "message": "Songs retrieved successfully!",
-        "data": {
-            "subtitles": subtitles
-            }
-        }
-    )
+        "message": "Subtitles retrieved successfully!",
+        "data": {"subtitles": subtitles}
+    })
 
 
-#Get all available models and voices
 @app.route("/api/models", methods=["GET"])
 def get_models():
     engine = get_tts_engine()
@@ -889,13 +811,11 @@ def get_models():
         result["voiceStyles"] = get_supertonic_voices_detailed()
         result["languages"] = get_supertonic_languages()
         result["qualityPresets"] = get_supertonic_quality_presets()
-    return jsonify(
-        {
+    return jsonify({
         "status": "success",
         "message": "Models retrieved successfully!",
         "data": result
-        }
-    )
+    })
 
 
 @app.route("/api/assets", methods=["GET"])
@@ -903,29 +823,21 @@ def get_assets():
     assets_path = os.path.join(os.path.dirname(__file__), "static/assets/temp")
     video_assets = os.listdir(assets_path)
     videos = [video for video in video_assets if video.endswith(".mp4")]
-    return jsonify(
-        {
+    return jsonify({
         "status": "success",
         "message": "Assets retrieved successfully!",
-        "data": {
-            "videos": videos
-            }
-        }
-    )
-
+        "data": {"videos": videos}
+    })
 
 
 @app.route("/api/settings", methods=["GET"])
 def get_global_settings():
-
     global_settings = get_settings()
-    return jsonify(
-        {
+    return jsonify({
         "status": "success",
         "message": "System settings retrieved successfully!",
         "data": global_settings
-        }
-    )
+    })
 
 
 @app.route("/api/settings", methods=["POST"])
@@ -934,25 +846,21 @@ def update_global_settings():
     setting_type = data.get("type", "FONT")
     settings = data.get("settings", {})
     update_settings(settings, setting_type)
-    return jsonify(
-        {
+    return jsonify({
         "status": "success",
         "message": "Settings updated successfully!",
         "data": get_settings()
-        }
-    )
+    })
 
 
 @app.route("/api/tts/status", methods=["GET"])
 def get_tts_health():
     status = get_tts_status()
-    return jsonify(
-        {
+    return jsonify({
         "status": "success",
         "message": "TTS status retrieved successfully!",
         "data": status
-        }
-    )
+    })
 
 
 @app.route("/api/tts/voices", methods=["GET"])
@@ -967,13 +875,11 @@ def get_tts_voices():
         result["voiceStyles"] = get_supertonic_voices_detailed()
         result["languages"] = get_supertonic_languages()
         result["qualityPresets"] = get_supertonic_quality_presets()
-    return jsonify(
-        {
+    return jsonify({
         "status": "success",
         "message": "Voices retrieved successfully!",
         "data": result
-        }
-    )
+    })
 
 
 @app.route("/api/magicsync/accounts", methods=["POST"])
@@ -983,32 +889,13 @@ def magicsync_accounts():
         url = data.get("url", os.getenv("MAGICSYNC_BASE_URL", "http://localhost:3000"))
         api_token = data.get("apiToken", os.getenv("MAGICSYNC_API_TOKEN", ""))
 
-        print(colored(f"[X] MagicSync accounts request", "blue"))
-        print(colored(f"[X]   URL: {url}", "blue"))
-        print(colored(f"[X]   API token present: {'yes' if api_token else 'no'}", "blue"))
-
         if not api_token:
-            print(colored("[-]   MISSING: API token", "red"))
-            return jsonify({"status": "error", "message": "API token is required. Provide it in the request or set MAGICSYNC_API_TOKEN in Backend/.env"}), 400
+            return jsonify({"status": "error", "message": "API token is required."}), 400
 
         target_url = f"{url}/api/v1/cli/info"
-        print(colored(f"[X]   GETting from: {target_url}", "blue"))
-
-        info_resp = requests.get(
-            target_url,
-            headers={"x-api-key": api_token},
-            timeout=10
-        )
-
-        print(colored(f"[X]   Response status: {info_resp.status_code}", "blue"))
-        try:
-            resp_body = info_resp.json()
-            print(colored(f"[X]   Response body: {json.dumps(resp_body, indent=2)[:800]}", "blue"))
-        except Exception:
-            print(colored(f"[X]   Response text: {info_resp.text[:500]}", "blue"))
+        info_resp = requests.get(target_url, headers={"x-api-key": api_token}, timeout=10)
 
         if info_resp.status_code != 200:
-            print(colored(f"[-] MagicSync info failed: {info_resp.text[:200]}", "red"))
             return jsonify({"status": "error", "message": f"Failed to connect: {info_resp.text}"}), 502
 
         platforms_data = info_resp.json()
@@ -1020,10 +907,6 @@ def magicsync_accounts():
 
         platforms_list = list(dict.fromkeys(a.get("platform") for a in accounts if a.get("isActive")))
 
-        print(colored(f"[+] Found {len(platforms_list)} MagicSync platform(s)", "green"))
-        for p in platforms_list:
-            print(colored(f"      - {p}", "green"))
-
         return jsonify({
             "status": "success",
             "message": "Accounts retrieved successfully!",
@@ -1031,13 +914,10 @@ def magicsync_accounts():
         })
 
     except requests.exceptions.Timeout:
-        print(colored(f"[-] MagicSync info request timed out", "red"))
         return jsonify({"status": "error", "message": "MagicSync API request timed out"}), 504
     except requests.exceptions.ConnectionError as e:
-        print(colored(f"[-] MagicSync API connection failed: {e}", "red"))
-        return jsonify({"status": "error", "message": f"Cannot connect to MagicSync at {url}. Is the server running?"}), 502
+        return jsonify({"status": "error", "message": f"Cannot connect to MagicSync at {url}."}), 502
     except Exception as e:
-        print(colored(f"[-] Error fetching MagicSync accounts: {str(e)}", "red"))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -1059,29 +939,16 @@ def schedule_to_magicsync():
         platforms = data.get("platforms", [])
         video_base_url = data.get("videoBaseUrl", "")
 
-        print(colored(f"[X] Schedule-to-MagicSync request received", "blue"))
-        print(colored(f"[X]   videoFilename: {video_filename}", "blue"))
-        print(colored(f"[X]   scheduledAt: {scheduled_at}", "blue"))
-        print(colored(f"[X]   title: {title[:60] if title else '(empty)'}", "blue"))
-        print(colored(f"[X]   platforms ({len(platforms)}): {platforms}", "blue"))
-
         if not video_filename:
-            print(colored("[-]   MISSING: videoFilename", "red"))
             return jsonify({"status": "error", "message": "videoFilename is required"}), 400
         if not platforms:
-            print(colored("[-]   MISSING: platforms is empty", "red"))
             return jsonify({"status": "error", "message": "At least one platform is required"}), 400
 
         url = data.get("url", os.getenv("MAGICSYNC_BASE_URL", "http://localhost:3000"))
         api_token = data.get("apiToken", os.getenv("MAGICSYNC_API_TOKEN", ""))
 
-        print(colored(f"[X]   MagicSync URL: {url}", "blue"))
-        print(colored(f"[X]   API token present: {'yes' if api_token else 'no'}", "blue"))
-        print(colored(f"[X]   Video base URL: {video_base_url or '(using request host)'}", "blue"))
-
         if not api_token:
-            print(colored("[-]   MISSING: API token", "red"))
-            return jsonify({"status": "error", "message": "API token is required. Provide it in the request or set MAGICSYNC_API_TOKEN in Backend/.env"}), 400
+            return jsonify({"status": "error", "message": "API token is required."}), 400
 
         if video_base_url:
             video_url = f"{video_base_url.rstrip('/')}/api/video/{video_filename}"
@@ -1104,55 +971,31 @@ def schedule_to_magicsync():
         if scheduled_at:
             payload["scheduledAt"] = scheduled_at
 
-        print(colored(f"[X]   Payload to MagicSync:", "blue"))
-        print(colored(f"       content: {content[:80]}...", "blue"))
-        print(colored(f"       media.video: {video_url}", "blue"))
-        print(colored(f"       platforms: {platforms}", "blue"))
-        if scheduled_at:
-            print(colored(f"       scheduledAt: {scheduled_at}", "blue"))
-
         target_url = f"{url}/api/v1/cli/post"
-        print(colored(f"[X]   POSTing to: {target_url}", "blue"))
-
         post_resp = requests.post(
             target_url,
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": api_token
-            },
+            headers={"Content-Type": "application/json", "x-api-key": api_token},
             json=payload,
             timeout=30
         )
 
-        print(colored(f"[X]   Response status: {post_resp.status_code}", "blue"))
-        try:
-            resp_body = post_resp.json()
-            print(colored(f"[X]   Response body: {json.dumps(resp_body, indent=2)[:500]}", "blue"))
-        except Exception:
-            print(colored(f"[X]   Response text: {post_resp.text[:500]}", "blue"))
-
         if post_resp.status_code == 200:
-            print(colored(f"[+] Video scheduled successfully!", "green"))
             return jsonify({
                 "status": "success",
                 "message": "Video scheduled successfully!",
                 "data": post_resp.json()
             })
         else:
-            print(colored(f"[-] MagicSync API returned {post_resp.status_code}", "red"))
             return jsonify({
                 "status": "error",
                 "message": f"MagicSync API error: {post_resp.text}"
             }), 502
 
     except requests.exceptions.Timeout:
-        print(colored(f"[-] MagicSync API request timed out after 30s", "red"))
         return jsonify({"status": "error", "message": "MagicSync API request timed out"}), 504
     except requests.exceptions.ConnectionError as e:
-        print(colored(f"[-] MagicSync API connection failed: {e}", "red"))
-        return jsonify({"status": "error", "message": f"Cannot connect to MagicSync at {url}. Is the server running?"}), 502
+        return jsonify({"status": "error", "message": f"Cannot connect to MagicSync at {url}."}), 502
     except Exception as e:
-        print(colored(f"[-] Error scheduling video: {str(e)}", "red"))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -1179,7 +1022,6 @@ def delete_video():
     if not deleted:
         return jsonify({"status": "error", "message": "Video file not found"}), 404
 
-    print(colored(f"[+] Deleted: {', '.join(deleted)}", "green"))
     return jsonify({"status": "success", "message": f"Deleted {', '.join(deleted)}"})
 
 
@@ -1194,7 +1036,7 @@ def leadgen_health():
 
     try:
         ok = asyncio.run(check())
-        return jsonify({"status": "ok" if ok else "error", "message": "Connected to Chrome" if ok else f"Cannot connect to Chrome on port {port}"})
+        return jsonify({"status": "ok" if ok else "error", "message": "Connected to Chrome" if ok else f"Cannot connect on port {port}"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -1233,7 +1075,6 @@ def leadgen_scrape_url():
             return jsonify({"status": "error", "message": result["error"]}), 400
         return jsonify({"status": "ok", "data": result})
     except Exception as e:
-        print(colored(f"[-] Error scraping URL: {e}", "red"))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -1251,7 +1092,6 @@ def leadgen_enrich_campaign():
             result = enrich_campaign_description(description)
         return jsonify({"status": "ok", "data": result})
     except Exception as e:
-        print(colored(f"[-] Error enriching campaign: {e}", "red"))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -1272,7 +1112,6 @@ def leadgen_campaigns():
         campaign = create_campaign(name, description, keywords, platforms, enrichment)
         return jsonify({"status": "ok", "data": campaign})
     except Exception as e:
-        print(colored(f"[-] Error creating campaign: {e}", "red"))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -1302,7 +1141,6 @@ def leadgen_add_lead(campaign_id):
         lead = add_lead(campaign_id, data)
         return jsonify({"status": "ok", "data": lead})
     except Exception as e:
-        print(colored(f"[-] Error adding lead: {e}", "red"))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -1322,7 +1160,6 @@ def leadgen_campaign_competitors(campaign_id):
         if not name:
             return jsonify({"status": "error", "message": "Competitor name required"}), 400
 
-        # AI-enrich the competitor analysis
         try:
             analysis = analyze_competitor(name, campaign.get("description", ""))
             competitor = {
@@ -1372,7 +1209,6 @@ def leadgen_campaign_viral_posts(campaign_id):
         if not post_text:
             return jsonify({"status": "error", "message": "post_text is required"}), 400
 
-        # AI-analyze the viral post
         try:
             analysis = analyze_viral_post(post_text, campaign.get("description", ""))
             post = {
@@ -1430,7 +1266,6 @@ def leadgen_twitter_audit():
             return jsonify({"status": "error", "message": "Profile not found"}), 404
         return jsonify({"status": "ok", "data": {"profile": profile, "related_users": related}})
     except Exception as e:
-        print(colored(f"[-] Error auditing profile: {e}", "red"))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -1446,7 +1281,6 @@ def leadgen_campaign_search_leads(campaign_id):
     mode = data.get("mode", "leads")
     custom_keywords = data.get("custom_keywords", [])
 
-    # GPT-generate the best keywords for this campaign + mode
     try:
         if mode == "engagement":
             search_queries = generate_engagement_keywords(campaign)
@@ -1456,7 +1290,6 @@ def leadgen_campaign_search_leads(campaign_id):
         search_queries = campaign.get("keywords", []) + campaign.get("intent_queries", [])
         search_queries = [q for q in set(search_queries) if q.strip()]
 
-    # Merge with user's custom keywords (at front, prioritized)
     if custom_keywords:
         search_queries = list(custom_keywords) + [q for q in search_queries if q not in custom_keywords]
 
@@ -1499,10 +1332,8 @@ def leadgen_campaign_search_leads(campaign_id):
     try:
         real_posts, real_profiles = asyncio.run(fetch())
 
-        # If real search returned nothing, fall back to GPT-generated leads
         gpt_fallback_used = False
         if not real_posts and not real_profiles:
-            print(colored(f"[!] Real search returned 0 results — using GPT fallback", "yellow"))
             gpt_fallback_used = True
             synthetic = generate_synthetic_leads(campaign, mode=mode, count=12)
             posts = []
@@ -1519,14 +1350,12 @@ def leadgen_campaign_search_leads(campaign_id):
                         "profile_url": f"https://twitter.com/{s['username']}",
                         "matched_keyword": "gpt-generated",
                     })
-            # Mark posts as GPT-generated
             for p in posts:
                 p["_gpt_generated"] = True
         else:
             posts = real_posts
             profiles_list = real_profiles
 
-        # GPT qualify all posts 1-10
         qualifications = []
         if posts:
             try:
@@ -1534,7 +1363,6 @@ def leadgen_campaign_search_leads(campaign_id):
             except Exception as e:
                 print(colored(f"[-] Qualification failed: {e}", "red"))
 
-        # Attach qualification to each post
         for q in qualifications:
             idx = q.get("index")
             if idx is not None and idx < len(posts):
@@ -1545,7 +1373,6 @@ def leadgen_campaign_search_leads(campaign_id):
                 }
 
         if mode == "engagement":
-            # Engagement mode: don't auto-add profiles as leads
             engagement_suggestions = []
             if posts:
                 try:
@@ -1568,7 +1395,6 @@ def leadgen_campaign_search_leads(campaign_id):
                 }
             })
         else:
-            # Leads mode: auto-add found or generated profiles as leads
             for p in profiles_list:
                 add_lead(campaign_id, {
                     "platform": "twitter",
@@ -1606,7 +1432,6 @@ def leadgen_campaign_search_leads(campaign_id):
                 }
             })
     except Exception as e:
-        print(colored(f"[-] Error searching leads: {e}", "red"))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -1620,11 +1445,8 @@ def leadgen_enhance_profile():
         result = enhance_profile_analysis(profile)
         return jsonify({"status": "ok", "data": result})
     except Exception as e:
-        print(colored(f"[-] Error enhancing profile: {e}", "red"))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
 if __name__ == "__main__":
-
-    # Run Flask App
     app.run(debug=True, host=HOST, port=PORT)
