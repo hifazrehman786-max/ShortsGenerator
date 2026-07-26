@@ -1470,20 +1470,33 @@ def leadgen_enhance_profile():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ==========================================
+# MAIN EXECUTION (WEB SERVER + GITHUB ACTIONS CLI)
+# ==========================================
+
 if __name__ == "__main__":
     import sys
+    import argparse
     
-    # Agar GitHub Actions CLI (--cli) chalaye toh direct generation karein
-    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
-        print(colored("[*] Starting Direct HD Video Generation via CLI...", "green"))
+    # Agar Terminal ya GitHub Actions se arguments aayein:
+    if len(sys.argv) > 1:
+        parser = argparse.ArgumentParser(description="Automated Short Generator")
+        parser.add_argument("--cli", action="store_true", help="Run in CLI mode")
+        parser.add_argument("--prompt", type=str, help="Custom topic for the video", default=None)
+        args, unknown = parser.parse_known_args()
+
+        # Dynamic Topic: Agar user GitHub Actions box mein kuch likhe toh wo preference le, aksar default facts
+        topic_subject = args.prompt if args.prompt else "Interesting Facts"
+
+        print(colored(f"[*] Starting Direct HD Video Generation for Topic: '{topic_subject}'...", "green"))
         
         # Clean assets & ensure folders exist
         create_folders()
         clean_dir(os.path.join(os.path.dirname(__file__), "static/assets/temp/"))
         clean_dir(os.path.join(os.path.dirname(__file__), "static/assets/subtitles/"))
 
-        # Main video generation
-        videoClass = Shorts("Interesting Facts", 1, "gpt-4o-mini", "")
+        # Main video generation with dynamic topic
+        videoClass = Shorts(topic_subject, 1, "gpt-4o-mini", "")
         videoClass.GenerateScript()
         videoClass.GenerateSearchTerms()
         videoClass.DownloadVideos([])
