@@ -25,17 +25,8 @@ g4f.debug.logging = True
 
 def generate_response(prompt: str, ai_model: str) -> str:
     """
-    Generate a script for a video, depending on the subject of the video.
-
-    Args:
-        prompt (str): The prompt for generation.
-        ai_model (str): The AI model to use for generation.
-
-    Returns:
-        str: The response from the AI model.
+    Generate a script or text response using Gemini or G4F providers.
     """
-
-    # Model name normalise karein taake typo/invalid values par error na aaye
     model_key = str(ai_model).lower().strip()
 
     if model_key in ['g4f', 'gpt-4o-mini', 'gpt-4o', 'g4f-gemini']:
@@ -51,7 +42,7 @@ def generate_response(prompt: str, ai_model: str) -> str:
 
     elif model_key in ['gemini', 'gemmini', 'google', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash']:
         if client is None:
-            raise ValueError("GOOGLE_API_KEY not configured")
+            raise ValueError("GOOGLE_API_KEY not configured in .env file")
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt
@@ -80,66 +71,71 @@ def generate_response(prompt: str, ai_model: str) -> str:
 
 def get_search_terms(video_subject: str, amount: int, script: str, ai_model: str) -> List[str]:
     """
-    Generate a JSON-Array of search terms for stock videos,
-    depending on the subject of a video.
+    Generate a JSON-Array of highly visual stock video search terms for Pexels/Pixabay.
+    Converts game names and abstract topics into real visual stock scenes.
     """
 
-    # Build prompt
     prompt = f"""
-    # Role: Video Search Terms Generator
-    ## Goals:
-    Generate {amount} search terms for stock videos, depending on the subject of a video.
+    # Role: Expert Stock Video Visual Director
 
-    ## Constrains:
-    1. the search terms are to be returned as a json-array of strings.
-    2. each search term should consist of 1-3 words, always add the main subject of the video.
-    3. you must only return the json-array of strings. you must not return anything else. you must not return the script.
-    4. the search terms must be related to the subject of the video.
-    5. reply with english search terms only.
+    ## Goal:
+    Generate exactly {amount} highly visual, generic search queries for stock video platforms like Pexels based on the video context.
 
-    ## Output Example:
-    ["search term 1", "search term 2", "search term 3","search term 4","search term 5"]
-    
+    ## CRITICAL RULES FOR STOCK SEARCH:
+    1. NEVER use specific game titles, brand names, proper nouns, or abstract terms (e.g. NEVER search 'Free Fire', 'OB54', 'PUBG', 'Mindset', 'Crypto').
+    2. Convert topics into REAL VISUAL ACTIONS & SCENES that exist in stock video libraries.
+       - Example for Gaming/Free Fire: ["gamer playing mobile game", "esports tournament player", "holding smartphone gaming", "close up smartphone gaming", "gaming controller RGB setup"]
+       - Example for Motivation: ["man running sunset", "person reaching mountain top", "focused man working laptop"]
+    3. Each search term must be 2 to 3 words max in English.
+    4. Return ONLY a valid JSON array of strings. Do not add markdown blocks like ```json, intro, or outro text.
+
     ## Context:
-    ### Video Subject
-    {video_subject}
+    Subject: {video_subject}
+    Script: {script}
 
-    ### Video Script
-    {script}
-
-    Please note that you must use English for generating video search terms; Chinese is not accepted.
+    ## Output Format:
+    ["visual scene 1", "visual scene 2", "visual scene 3"]
     """.strip()
 
-    print(colored(f"Generating {amount} search terms for {video_subject}...", "cyan"))
+    print(colored(f"Generating {amount} visual search terms for '{video_subject}'...", "cyan"))
 
     response = generate_response(prompt, ai_model)
+    print(colored(f"Raw Response: {response}", "cyan"))
 
-    print(colored(f"Response: {response}", "cyan"))
+    # Cleanup response if wrapped in markdown code blocks
+    cleaned_response = response.strip()
+    if cleaned_response.startswith("```"):
+        cleaned_response = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned_response)
+        cleaned_response = re.sub(r"\n?```$", "", cleaned_response).strip()
+
     search_terms = []
     
     try:
-        search_terms = json.loads(response)
+        search_terms = json.loads(cleaned_response)
         if not isinstance(search_terms, list) or not all(isinstance(term, str) for term in search_terms):
-            raise ValueError("Response is not a list of strings.")
+            raise ValueError("Response is not a valid list of strings.")
 
     except (json.JSONDecodeError, ValueError):
-        print(colored("[*] GPT returned an unformatted response. Attempting to clean...", "yellow"))
+        print(colored("[*] Attempting regex extraction for JSON array...", "yellow"))
 
-        match = re.search(r'\["(?:[^"\\]|\\.)*"(?:,\s*"[^"\\]*")*\]', response)
+        match = re.search(r'\[\s*".*?"\s*(?:,\s*".*?"\s*)*\]', response, re.DOTALL)
         if match:
             try:
                 search_terms = json.loads(match.group())
             except json.JSONDecodeError:
-                print(colored("[-] Could not parse response.", "red"))
-                return []
+                print(colored("[-] Failed to parse extracted JSON array.", "red"))
+                # Smart fallback depending on topic
+                if any(k in video_subject.lower() for k in ['game', 'gaming', 'fire', 'pubg', 'mobile']):
+                    return ["gamer playing mobile game", "esports gaming", "holding smartphone gaming", "gaming setup"]
+                return ["generic scene", "abstract background", "technology screen"]
 
-    print(colored(f"\nGenerated {len(search_terms)} search terms: {', '.join(search_terms)}", "cyan"))
+    print(colored(f"\nGenerated {len(search_terms)} visual search terms: {', '.join(search_terms)}", "cyan"))
     return search_terms
 
 
 def generate_metadata(video_subject: str, script: str, ai_model: str) -> Tuple[str, str, List[str], str]:  
     """  
-    Generate metadata for a YouTube video, including the title, description, keywords, and social post content.  
+    Generate metadata for YouTube Shorts / Social Media post.
     """  
 
     title_prompt = f"""  
@@ -167,7 +163,7 @@ def generate_metadata(video_subject: str, script: str, ai_model: str) -> Tuple[s
     """  
 
     description = generate_response(description_prompt, ai_model).strip()  
-    keywords = get_search_terms(video_subject, 6, script, ai_model)  
+    keywords = get_search_terms(video_subject, 5, script, ai_model)  
 
     post_prompt = f"""  
     You are an expert social media content writer. Write a short, engaging post to promote this video on social platforms like YouTube, TikTok, or Instagram.  
