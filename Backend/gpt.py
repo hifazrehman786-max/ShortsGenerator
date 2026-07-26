@@ -69,6 +69,31 @@ def generate_response(prompt: str, ai_model: str) -> str:
             return response.choices[0].message.content
 
 
+def generate_script(video_subject: str, ai_model: str) -> str:
+    """
+    Generate a high-retention, deeply detailed video script enriched with 
+    exact technical data, numbers, patch updates, and core facts instead of generic fluff.
+    """
+    prompt = f"""
+    # Role: Elite Viral Video Scriptwriter & Deep-Data Researcher
+
+    ## Goal:
+    Write an engaging, highly detailed, fast-paced video script for the subject: "{video_subject}".
+
+    ## CRITICAL RULES FOR SCRIPT WRITING:
+    1. **NO GENERIC FLUFF:** Never use vague sentences like "this update is awesome and changes everything" or upar-upar ki baatein.
+    2. **ENFORCE DEED DATA & EXACT METRICS:** Include specific stats, exact patch numbers, real character/weapon adjustments, exact percentages, item changes, or technical details relevant to the topic.
+    3. **HIGH RETENTION HOOK:** Start directly with a hard-hitting hook in the first 3 seconds (mentioning exact updates, numbers, or leaks).
+    4. **NATURAL SPOKEN FLOW:** Keep sentences punchy, conversational, and optimized for Text-to-Speech (TTS) voiceover and automated subtitle synchronization.
+    5. **OUTPUT FORMAT:** Return ONLY the clean script text. Do not include markdown labels like "Script:", intros, or outros.
+    """.strip()
+
+    print(colored(f"Generating deep-data script for '{video_subject}'...", "cyan"))
+    script = generate_response(prompt, ai_model).strip()
+    print(colored(f"[+] Script generated successfully ({len(script)} characters).", "green"))
+    return script
+
+
 def get_search_terms(video_subject: str, amount: int, script: str, ai_model: str) -> List[str]:
     """
     Generate a JSON-Array of highly visual stock video search terms for Pexels/Pixabay.
