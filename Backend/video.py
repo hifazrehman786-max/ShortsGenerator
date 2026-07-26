@@ -8,7 +8,6 @@ import srt_equalizer
 import assemblyai as aai
 from uuid import uuid4
 
-
 from settings import *
 
 # Fix PIL compatibility: ANTIALIAS was removed in Pillow 10+
@@ -135,9 +134,13 @@ def __generate_subtitles_locally(audio_path: str, sentences: List[str], voice: s
 
 def generate_subtitles(audio_path: str, sentences: List[str], voice: str, sentence_durations: Optional[List[float]] = None) -> str:
     def equalize_subtitles(srt_path: str, max_chars: int = 42) -> None:
-        srt_equalizer.equalize_srt_file(srt_path, srt_path, max_chars)
+        try:
+            srt_equalizer.equalize_srt_file(srt_path, srt_path, max_chars)
+        except Exception as e:
+            print(colored(f"[-] Subtitle equalization skipped: {e}", "yellow"))
 
     subtitles_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static", "assets", "subtitles"))
+    os.makedirs(subtitles_dir, exist_ok=True)
     subtitles_path = os.path.join(subtitles_dir, f"{uuid.uuid4()}.srt")
 
     if ASSEMBLY_AI_API_KEY is not None and ASSEMBLY_AI_API_KEY != "":
@@ -148,7 +151,7 @@ def generate_subtitles(audio_path: str, sentences: List[str], voice: str, senten
         subtitles = __generate_subtitles_locally(audio_path, sentences, voice, sentence_durations)
 
     with open(subtitles_path, "w", encoding="utf-8") as file:
-        file.write(subtitles)
+        file.write(subtitles or "")
 
     equalize_subtitles(subtitles_path)
 
@@ -161,10 +164,7 @@ def _ffmpeg_images_to_video(image_paths: List[str], duration_per_image: float, t
     if not image_paths:
         return False
 
-    inputs = []
-    for p in image_paths:
-        if os.path.exists(p):
-            inputs.append(p)
+    inputs = [p for p in image_paths if p and os.path.exists(p)]
 
     if not inputs:
         return False
@@ -212,10 +212,10 @@ def _ffmpeg_images_to_video(image_paths: List[str], duration_per_image: float, t
 
 
 def _ffmpeg_prepend_images(image_paths: List[str], duration_per_image: float, video_path: str, target_w: int, target_h: int, output_path: str) -> bool:
-    if not image_paths or not os.path.exists(video_path):
+    if not image_paths or not video_path or not os.path.exists(video_path):
         return False
 
-    inputs = [p for p in image_paths if os.path.exists(p)]
+    inputs = [p for p in image_paths if p and os.path.exists(p)]
     if not inputs:
         return False
 
@@ -287,6 +287,8 @@ def get_aspect_ratio_value(aspect_ratio: str) -> float:
 
 
 def _ffprobe_duration(path: str) -> float:
+    if not path or not os.path.exists(path):
+        return 0.0
     try:
         cmd = [
             "ffprobe",
@@ -313,16 +315,10 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
 
     import random
 
-    # Get durations of all videos
     video_durations = [_ffprobe_duration(p) for p in inputs]
-
-    # Fallback duration for unreadable files
     fallback_dur = float(max_clip_duration) if max_clip_duration > 0 else 5.0
-
-    # Track the furthest point consumed from each video
     used_up_to = [0.0] * len(inputs)
 
-    # Build segment list: (input_index, start_time, duration)
     segments = []
     total_segments_dur = 0.0
     safety = 0
@@ -339,15 +335,12 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
             if vid_dur <= 0:
                 vid_dur = fallback_dur
 
-            # Determine segment start
             if vid_dur <= 0:
                 continue
 
             if used_up_to[i] == 0.0:
-                # First pass: start from 0
                 seg_start = 0.0
             elif used_up_to[i] >= vid_dur:
-                # Fully consumed — wrap around with random offset
                 if max_clip_duration > 0 and vid_dur > max_clip_duration:
                     max_start = vid_dur - max_clip_duration
                     seg_start = random.uniform(0, max_start)
@@ -355,7 +348,6 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
                     seg_start = 0.0
                 used_up_to[i] = seg_start
             else:
-                # Subsequent pass: pick random start after previously used point
                 remaining = vid_dur - used_up_to[i]
                 if remaining <= 0:
                     seg_start = 0.0
@@ -378,7 +370,6 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
                 dur_available,
             )
 
-            # Clip to remaining target duration
             needed = target_duration - total_segments_dur
             if seg_dur > needed:
                 seg_dur = needed
@@ -449,7 +440,7 @@ def combine_videos(video_paths: List[str], max_duration: float, max_clip_duratio
     os.makedirs(temp_dir, exist_ok=True)
     combined_video_path = os.path.join(temp_dir, f"{video_id}-combined.mp4")
 
-    valid_paths = [p for p in video_paths if p and os.path.exists(p)]
+    valid_paths = [p for p in (video_paths or []) if p and os.path.exists(p)]
     if not valid_paths:
         print(colored("[-] No video paths to combine.", "red"))
         return None
@@ -457,7 +448,6 @@ def combine_videos(video_paths: List[str], max_duration: float, max_clip_duratio
     target_w, target_h = get_aspect_ratio_dimensions(aspect_ratio)
     target_ratio = target_w / target_h
 
-    # Build image video segment if images provided
     image_video_path = None
     if image_paths:
         valid_images = [(p, image_durations[i] if image_durations and i < len(image_durations) else float(image_duration))
@@ -480,17 +470,15 @@ def combine_videos(video_paths: List[str], max_duration: float, max_clip_duratio
 
     print(colored(f"[+] Combining {len(valid_paths)} videos at {aspect_ratio} ({target_w}x{target_h})...", "blue"))
 
-    # Detect single-video + images: if only 1 video file and images exist, use full video
     real_video_count = len(valid_paths)
     if image_video_path and image_video_path in valid_paths:
         real_video_count -= 1
     if real_video_count <= 1 and image_video_path is not None:
-        effective_clip_duration = 0  # No trim, use full video
+        effective_clip_duration = 0
         print(colored("[+] Single video + images: using full video duration (no clip)", "cyan"))
     else:
         effective_clip_duration = max_clip_duration
 
-    # Add buffer time to target duration to ensure video covers full audio + buffer
     target_duration_with_buffer = float(max_duration) + buffer_time
 
     use_ffmpeg = _ffmpeg_concat_clips(
@@ -510,9 +498,7 @@ def combine_videos(video_paths: List[str], max_duration: float, max_clip_duratio
 
     import random
 
-    # Track per-video usage: video_path -> furthest consumed point
     used_up_to = {p: 0.0 for p in valid_paths}
-
     clips = []
     tot_dur = 0
     safety = 0
@@ -530,12 +516,10 @@ def combine_videos(video_paths: List[str], max_duration: float, max_clip_duratio
             if full_dur <= 0:
                 full_dur = max_clip if max_clip else 5.0
 
-            # Determine segment start
             cur = used_up_to[video_path]
             if cur == 0.0:
                 seg_start = 0.0
             elif cur >= full_dur:
-                # Fully consumed — wrap around with random offset
                 if max_clip and full_dur > max_clip:
                     seg_start = random.uniform(0, full_dur - max_clip)
                 else:
@@ -629,6 +613,8 @@ def _resolve_subtitle_template(template_value: str):
 
 
 def _get_font_family(font_path: str) -> str:
+    if not font_path or not os.path.exists(font_path):
+        return "Arial"
     try:
         result = subprocess.run(
             ["fc-scan", "--format", "%{family}", font_path],
@@ -656,10 +642,22 @@ def _ffmpeg_render_with_subtitles(
     target_h: int,
     buffer_time: float = 3.0,
 ) -> bool:
+    # SAFE NULL CHECKS FOR PATHS
+    if not video_path or not os.path.exists(video_path):
+        return False
+    if not audio_path or not os.path.exists(audio_path):
+        return False
+    if not subtitles_path or not os.path.exists(subtitles_path):
+        return False
+
     def hex_to_ass(hex_color: str) -> str:
-        h = hex_color.lstrip("#")
+        if not hex_color:
+            return "&H00FFFFFF"
+        h = str(hex_color).lstrip("#")
         if len(h) == 3:
             h = "".join(c * 2 for c in h)
+        if len(h) < 6:
+            h = h.zfill(6)
         return f"&H00{h[4:6]}{h[2:4]}{h[0:2]}"
 
     primary = hex_to_ass(color)
@@ -673,11 +671,8 @@ def _ffmpeg_render_with_subtitles(
     alignment = pos_map.get(position, 2)
 
     font_family = _get_font_family(font_path)
-    font_dir = os.path.dirname(os.path.abspath(font_path))
+    font_dir = os.path.dirname(os.path.abspath(font_path)) if font_path else ""
 
-    # ASS PlayRes defaults to 384x288 for SRT. FontSize is in units at PlayResY=288.
-    # To render a font at "fontsize" pixels tall at target_h video height:
-    #   ass_fontsize = fontsize * 288 / target_h
     ass_playres_y = 288
     fontsize_ass = max(12, round(fontsize * ass_playres_y / target_h))
     stroke_width_ass = max(0, round(stroke_width * ass_playres_y / target_h))
@@ -692,18 +687,14 @@ def _ffmpeg_render_with_subtitles(
         f"Alignment={alignment}"
     )
 
-    # ffmpeg filter syntax uses , to separate filters and : to separate options.
-    # Escape both inside force_style so libass receives them intact.
+    # Safe Replace Checks
     escaped_style = ass_style.replace(",", "\\,").replace(":", "\\:")
-    safe_subs = subtitles_path.replace(":", "\\:")
-    safe_fontdir = font_dir.replace(":", "\\:")
+    safe_subs = str(subtitles_path or "").replace(":", "\\:")
+    safe_fontdir = str(font_dir or "").replace(":", "\\:")
 
-    # Get audio duration to calculate total video length (audio + buffer)
     audio_duration = _ffprobe_duration(audio_path)
     total_duration = audio_duration + buffer_time if audio_duration > 0 else 0
 
-    # Build trim filter to ensure video matches audio + buffer duration
-    # This removes the need for -shortest flag which could truncate audio
     trim_filter = f",trim=duration={total_duration},setpts=PTS-STARTPTS" if total_duration > 0 else ""
     video_filter = f"subtitles={safe_subs}:fontsdir={safe_fontdir}:original_size={target_w}x{target_h}:force_style={escaped_style}{trim_filter}"
 
@@ -790,6 +781,7 @@ def generate_video(
             pass
 
     generated_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static", "generated_videos"))
+    os.makedirs(generated_dir, exist_ok=True)
 
     # --- TRY FFMPEG FAST PATH FIRST ---
     fast_video_name = os.path.join(generated_dir, f"{uuid4()}-final.mp4")
@@ -826,7 +818,12 @@ def generate_video(
         )
 
     print(colored(f"[+] Subtitles Path: {subtitles_path}", "green"))
-    subtitles = SubtitlesClip(subtitles_path, generator)
+    
+    if not subtitles_path or not os.path.exists(subtitles_path):
+        print(colored("[-] Subtitle file does not exist, proceeding without subtitles", "yellow"))
+        subtitles = None
+    else:
+        subtitles = SubtitlesClip(subtitles_path, generator)
 
     try:
         base_video = VideoFileClip(combined_video_path)
@@ -837,7 +834,6 @@ def generate_video(
         return None
 
     audio = AudioFileClip(tts_path)
-    # Target duration includes buffer time after voice ends
     target_duration = float(audio.duration) + buffer_time
 
     if base_video.duration < target_duration:
@@ -851,12 +847,14 @@ def generate_video(
     elif base_video.duration > target_duration:
         base_video = base_video.subclip(0, target_duration)
 
-    subtitles = subtitles.set_duration(target_duration)
-
-    result = CompositeVideoClip([
-        base_video,
-        subtitles.set_pos((horizontal_subtitles_position, vertical_subtitles_position))
-    ]).set_duration(target_duration)
+    if subtitles:
+        subtitles = subtitles.set_duration(target_duration)
+        result = CompositeVideoClip([
+            base_video,
+            subtitles.set_pos((horizontal_subtitles_position, vertical_subtitles_position))
+        ]).set_duration(target_duration)
+    else:
+        result = base_video.set_duration(target_duration)
 
     result = result.set_audio(audio)
 
@@ -872,10 +870,11 @@ def generate_video(
         audio.close()
     except Exception:
         pass
-    try:
-        subtitles.close()
-    except Exception:
-        pass
+    if subtitles:
+        try:
+            subtitles.close()
+        except Exception:
+            pass
     try:
         result.close()
     except Exception:
@@ -890,7 +889,11 @@ def ffmpeg_add_music_to_video(
     output_path: str,
     volume: float = 0.1,
 ) -> bool:
-    import subprocess
+    if not video_path or not os.path.exists(video_path):
+        return False
+    if not music_path or not os.path.exists(music_path):
+        return False
+
     video_dur = _ffprobe_duration(video_path)
     music_dur = _ffprobe_duration(music_path) or 1
     loops = max(1, int(video_dur / music_dur) + 1) if music_dur > 0 else 1
