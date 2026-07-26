@@ -163,10 +163,10 @@ def generate():
                 "data": [],
             })
         
-        voice = data.get("voice", "en_us_001")
-        if not voice:
-            print(colored("[!] No voice was selected. Defaulting to \"en_us_001\"", "yellow"))
-            voice = "en_us_001"
+        voice = data.get("voice", "en_us_006")
+if not voice:
+    print(colored("[!] No voice was selected. Defaulting to \"en_us_006\"", "yellow"))
+    voice = "en_us_006"
 
         script_template = data.get("scriptTemplate", "")
         selectedVideoUrls = data.get("selectedVideoUrls", [])
@@ -174,7 +174,7 @@ def generate():
         images = data.get("images", [])
         image_duration = data.get("imageDuration", 5.0)
         image_durations = data.get("imageDurations", [])
-        clip_duration = int(data.get("clipDuration", 10))
+        clip_duration = int(data.get("clipDuration", 3))
 
         videoClass = Shorts(video_subject, paragraph_number, ai_model, custom_prompt, script_template=script_template)
         videoClass.clip_duration = clip_duration
