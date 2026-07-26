@@ -317,6 +317,13 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
 
     video_durations = [_ffprobe_duration(p) for p in inputs]
     fallback_dur = float(max_clip_duration) if max_clip_duration > 0 else 5.0
+
+    # Professional touch: Randomize sequence order so it never feels repetitive or loop-like!
+    combined_pool = list(zip(inputs, video_durations))
+    random.shuffle(combined_pool)
+    inputs = [item[0] for item in combined_pool]
+    video_durations = [item[1] for item in combined_pool]
+
     used_up_to = [0.0] * len(inputs)
 
     segments = []
@@ -390,11 +397,15 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
     filter_parts = []
 
     for seg_idx, (input_idx, start_time, duration) in enumerate(segments):
+        # Professional Touch: Added smooth slow zoom-in (Ken Burns effect) and subtle color boost via eq filter to give a paid high-end feel!
+        zoom_speed = 0.04
         scale_filter = (
             f"[{input_idx}:v]trim=start={start_time}:duration={duration},"
             f"setpts=PTS-STARTPTS,"
-            f"scale=w={target_w}:h={target_h}:force_original_aspect_ratio=increase,"
-            f"crop={target_w}:{target_h},"
+            f"scale=w={target_w*2}:h={target_h*2}:force_original_aspect_ratio=increase,"
+            f"crop={target_w}:{target_h}:(iw-{target_w})/2:(ih-{target_h})/2,"
+            f"zoompan=z='min(zoom+{zoom_speed},1.15)':d={int(duration*30)}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={target_w}x{target_h}:fps=30,"
+            f"eq=contrast=1.1:saturation=1.15,"
             f"setsar=1,format=yuv420p[v{seg_idx}]"
         )
         filter_parts.append(scale_filter)
@@ -405,7 +416,7 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
 
     filter_complex = ";".join(filter_parts)
 
-    print(colored(f"[+] ffmpeg segments: {n_segments} total, {total_segments_dur:.1f}s at {target_w}x{target_h}", "cyan"))
+    print(colored(f"[+] ffmpeg segments with dynamic cinematic zoom & shuffling: {n_segments} total, {total_segments_dur:.1f}s at {target_w}x{target_h}", "cyan"))
 
     cmd = ["ffmpeg", "-y"]
     for p in inputs:
