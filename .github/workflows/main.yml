@@ -1,62 +1,55 @@
-name: Generate Test Short
+name: Generate Automated Short Video
 
 on:
   workflow_dispatch:
     inputs:
-      topic_prompt:
-        description: 'Video ka topic likhein (e.g., Space facts, Ocean mysteries)'
+      prompt:
+        description: 'Video ka topic/prompt likhein (e.g. Space Facts, Mindset Tips)'
         required: false
-        default: 'Random interesting facts'
+        default: 'Interesting Facts'
+        type: string
 
 jobs:
-  generate:
+  generate-video:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+    steps:
+      # 1. Code Repository Checkout
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # 2. Python Environment Setup
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install ImageMagick and FFmpeg
+      # 3. System Dependencies Install (FFmpeg & ImageMagick)
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y imagemagick ffmpeg
-          sudo sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml
+          sudo apt-get install -y ffmpeg imagemagick
 
-      - name: Install Dependencies
+      # 4. Python Requirements Install
+      - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f Backend/requirements.txt ]; then pip install -r Backend/requirements.txt; fi
 
-      - name: Create .env File
-        run: |
-          echo "PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}" >> .env
-          echo "PEXELS_KEY=${{ secrets.PEXELS_API_KEY }}" >> .env
-          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
-          echo "ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}" >> .env
-          echo "HUGGINGFACE_TOKEN=${{ secrets.HUGGINGFACE_TOKEN }}" >> .env
-          echo "IMAGEMAGICK_BINARY=/usr/bin/convert" >> .env
-
-      - name: Run Short Generator
+      # 5. Dynamic Topic ke sath Video Generate Karein
+      - name: Run Video Generator
         env:
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          PEXELS_KEY: ${{ secrets.PEXELS_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TIKTOK_SESSION_ID: ${{ secrets.TIKTOK_SESSION_ID }}
           IMAGEMAGICK_BINARY: /usr/bin/convert
         run: |
-          cd Backend
-          python main.py --prompt "${{ github.event.inputs.topic_prompt }}"
+          python Backend/main.py --cli --prompt "${{ github.event.inputs.prompt }}"
 
-      - name: Save Generated Video
+      # 6. Generated Video ko Artifact ke tor par Upload Karein (Download ke liye)
+      - name: Upload Generated Video Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Final-HD-Video
+          name: generated-short-video
           path: Backend/static/generated_videos/*.mp4
-          retention-days: 2
-          if-no-files-found: error
+          if-no-files-found: warn
