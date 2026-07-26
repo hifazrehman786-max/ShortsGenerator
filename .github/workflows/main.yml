@@ -49,9 +49,9 @@ jobs:
           sleep 5
           
           # Send generation request and wait for response
-          curl -X POST http://127.0.0.1:8080/generate-short \
+          curl -X POST http://127.0.0.1:8080/api/generate \
                -H "Content-Type: application/json" \
-               -d '{"topic": "Interesting Facts"}' \
+               -d '{"videoSubject": "Interesting Facts"}' \
                --max-time 600 || true
                
           # Kill server gracefully after generation
