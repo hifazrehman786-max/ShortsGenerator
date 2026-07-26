@@ -316,9 +316,11 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
     import random
 
     video_durations = [_ffprobe_duration(p) for p in inputs]
-    fallback_dur = float(max_clip_duration) if max_clip_duration > 0 else 5.0
+    
+    # Strict 3-second limit enforcement as requested
+    effective_max_clip = 3.0 if (max_clip_duration <= 0 or max_clip_duration > 3.0) else float(max_clip_duration)
+    fallback_dur = effective_max_clip
 
-    # Professional touch: Randomize sequence order so it never feels repetitive or loop-like!
     combined_pool = list(zip(inputs, video_durations))
     random.shuffle(combined_pool)
     inputs = [item[0] for item in combined_pool]
@@ -342,40 +344,19 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
             if vid_dur <= 0:
                 vid_dur = fallback_dur
 
-            if vid_dur <= 0:
-                continue
+            cur_pos = used_up_to[i]
+            
+            # Agar poori video use ho chuki hai, toh dubara shuru se repeat na karein balki random jagah se naya slice uthayein taaki duplicate feel na ho
+            if cur_pos >= vid_dur - 0.1:
+                cur_pos = 0.0
 
-            if used_up_to[i] == 0.0:
+            max_start_limit = max(0.0, vid_dur - effective_max_clip)
+            seg_start = random.uniform(0, max_start_limit) if max_start_limit > 0 else 0.0
+            
+            seg_dur = min(effective_max_clip, vid_dur - seg_start)
+            if seg_dur <= 0:
                 seg_start = 0.0
-            elif used_up_to[i] >= vid_dur:
-                if max_clip_duration > 0 and vid_dur > max_clip_duration:
-                    max_start = vid_dur - max_clip_duration
-                    seg_start = random.uniform(0, max_start)
-                else:
-                    seg_start = 0.0
-                used_up_to[i] = seg_start
-            else:
-                remaining = vid_dur - used_up_to[i]
-                if remaining <= 0:
-                    seg_start = 0.0
-                    used_up_to[i] = 0.0
-                elif max_clip_duration > 0 and remaining > max_clip_duration:
-                    max_start = vid_dur - max_clip_duration
-                    if max_start <= used_up_to[i]:
-                        seg_start = used_up_to[i]
-                    else:
-                        seg_start = random.uniform(used_up_to[i], max_start)
-                else:
-                    seg_start = used_up_to[i]
-
-            dur_available = vid_dur - seg_start
-            if dur_available <= 0:
-                continue
-
-            seg_dur = min(
-                max_clip_duration if max_clip_duration > 0 else dur_available,
-                dur_available,
-            )
+                seg_dur = min(effective_max_clip, vid_dur)
 
             needed = target_duration - total_segments_dur
             if seg_dur > needed:
@@ -397,7 +378,6 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
     filter_parts = []
 
     for seg_idx, (input_idx, start_time, duration) in enumerate(segments):
-        # Professional Touch: Added smooth slow zoom-in (Ken Burns effect) and subtle color boost via eq filter to give a paid high-end feel!
         zoom_speed = 0.04
         scale_filter = (
             f"[{input_idx}:v]trim=start={start_time}:duration={duration},"
@@ -416,7 +396,7 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
 
     filter_complex = ";".join(filter_parts)
 
-    print(colored(f"[+] ffmpeg segments with dynamic cinematic zoom & shuffling: {n_segments} total, {total_segments_dur:.1f}s at {target_w}x{target_h}", "cyan"))
+    print(colored(f"[+] ffmpeg segments with max 3s clips & dynamic zoom: {n_segments} total, {total_segments_dur:.1f}s at {target_w}x{target_h}", "cyan"))
 
     cmd = ["ffmpeg", "-y"]
     for p in inputs:
@@ -481,15 +461,8 @@ def combine_videos(video_paths: List[str], max_duration: float, max_clip_duratio
 
     print(colored(f"[+] Combining {len(valid_paths)} videos at {aspect_ratio} ({target_w}x{target_h})...", "blue"))
 
-    real_video_count = len(valid_paths)
-    if image_video_path and image_video_path in valid_paths:
-        real_video_count -= 1
-    if real_video_count <= 1 and image_video_path is not None:
-        effective_clip_duration = 0
-        print(colored("[+] Single video + images: using full video duration (no clip)", "cyan"))
-    else:
-        effective_clip_duration = max_clip_duration
-
+    # Force max clip duration to 3 seconds max
+    effective_clip_duration = 3 if (max_clip_duration <= 0 or max_clip_duration > 3) else max_clip_duration
     target_duration_with_buffer = float(max_duration) + buffer_time
 
     use_ffmpeg = _ffmpeg_concat_clips(
@@ -513,7 +486,7 @@ def combine_videos(video_paths: List[str], max_duration: float, max_clip_duratio
     clips = []
     tot_dur = 0
     safety = 0
-    max_clip = float(effective_clip_duration) if effective_clip_duration > 0 else None
+    max_clip = float(effective_clip_duration)
 
     while tot_dur < target_duration_with_buffer and safety < 2000:
         safety += 1
@@ -525,36 +498,12 @@ def combine_videos(video_paths: List[str], max_duration: float, max_clip_duratio
 
             full_dur = _ffprobe_duration(video_path)
             if full_dur <= 0:
-                full_dur = max_clip if max_clip else 5.0
+                full_dur = max_clip
 
-            cur = used_up_to[video_path]
-            if cur == 0.0:
-                seg_start = 0.0
-            elif cur >= full_dur:
-                if max_clip and full_dur > max_clip:
-                    seg_start = random.uniform(0, full_dur - max_clip)
-                else:
-                    seg_start = 0.0
-                used_up_to[video_path] = seg_start
-            else:
-                remaining = full_dur - cur
-                if remaining <= 0:
-                    seg_start = 0.0
-                    used_up_to[video_path] = 0.0
-                elif max_clip and remaining > max_clip:
-                    max_possible_start = full_dur - max_clip
-                    if max_possible_start <= cur:
-                        seg_start = cur
-                    else:
-                        seg_start = random.uniform(cur, max_possible_start)
-                else:
-                    seg_start = cur
+            max_start_limit = max(0.0, full_dur - max_clip)
+            seg_start = random.uniform(0, max_start_limit) if max_start_limit > 0 else 0.0
+            seg_dur = min(max_clip, full_dur - seg_start)
 
-            dur_available = full_dur - seg_start
-            if dur_available <= 0:
-                continue
-
-            seg_dur = min(max_clip if max_clip else dur_available, dur_available)
             needed = target_duration_with_buffer - tot_dur
             if seg_dur > needed:
                 seg_dur = needed
@@ -587,7 +536,6 @@ def combine_videos(video_paths: List[str], max_duration: float, max_clip_duratio
             clip = clip.resize((target_w, target_h))
 
             clips.append(clip)
-            used_up_to[video_path] = seg_start + seg_dur
             tot_dur += seg_dur
             any_added = True
 
@@ -653,7 +601,6 @@ def _ffmpeg_render_with_subtitles(
     target_h: int,
     buffer_time: float = 3.0,
 ) -> bool:
-    # SAFE NULL CHECKS FOR PATHS
     if not video_path or not os.path.exists(video_path):
         return False
     if not audio_path or not os.path.exists(audio_path):
@@ -698,7 +645,6 @@ def _ffmpeg_render_with_subtitles(
         f"Alignment={alignment}"
     )
 
-    # Safe Replace Checks
     escaped_style = ass_style.replace(",", "\\,").replace(":", "\\:")
     safe_subs = str(subtitles_path or "").replace(":", "\\:")
     safe_fontdir = str(font_dir or "").replace(":", "\\:")
@@ -794,7 +740,6 @@ def generate_video(
     generated_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static", "generated_videos"))
     os.makedirs(generated_dir, exist_ok=True)
 
-    # --- TRY FFMPEG FAST PATH FIRST ---
     fast_video_name = os.path.join(generated_dir, f"{uuid4()}-final.mp4")
     print(colored("[+] Trying ffmpeg subtitle render (fast path)...", "blue"))
     if _ffmpeg_render_with_subtitles(
@@ -816,7 +761,6 @@ def generate_video(
 
     print(colored("[*] Falling back to MoviePy subtitle render.", "yellow"))
 
-    # --- MOVIEPY FALLBACK ---
     def generator(txt):
         return TextClip(
             txt,
