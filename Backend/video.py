@@ -317,18 +317,16 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
 
     video_durations = [_ffprobe_duration(p) for p in inputs]
     
-    # Strict 3-second limit enforcement with fallback safety
-    effective_max_clip = 3.0 if (max_clip_duration <= 0 or max_clip_duration > 3.0) else float(max_clip_duration)
+    # Smart Dynamic Clip Duration (Allowing clips to play naturally up to 10-12 seconds for high engagement)
+    base_max = float(max_clip_duration) if max_clip_duration > 0 else 10.0
+    effective_max_clip = max(6.0, min(base_max, 12.0))
 
     segments = []
     total_segments_dur = 0.0
     safety = 0
 
-    # Ensure we loop through available inputs safely without infinite freezing
     while total_segments_dur < target_duration and safety < 2000:
         safety += 1
-        
-        # Shuffle pool dynamically every round to maintain high variety
         combined_pool = list(zip(inputs, video_durations))
         random.shuffle(combined_pool)
         
@@ -339,11 +337,12 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
             if vid_dur <= 0:
                 vid_dur = effective_max_clip
 
-            # Pick a safe random starting point within the clip limits
-            max_start_limit = max(0.0, vid_dur - effective_max_clip)
+            # Dynamic length: let engaging clips play longer (up to full duration or max limit)
+            allowed_dur = min(vid_dur, effective_max_clip)
+            max_start_limit = max(0.0, vid_dur - allowed_dur)
             seg_start = random.uniform(0, max_start_limit) if max_start_limit > 0 else 0.0
             
-            seg_dur = min(effective_max_clip, vid_dur - seg_start)
+            seg_dur = min(allowed_dur, vid_dur - seg_start)
             if seg_dur <= 0:
                 seg_start = 0.0
                 seg_dur = min(effective_max_clip, vid_dur)
@@ -364,13 +363,12 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
     filter_parts = []
 
     for seg_idx, (input_idx, start_time, duration) in enumerate(segments):
-        zoom_speed = 0.04
+        # Smooth cinematic scaling without aggressive annoying zoompan flickering
         scale_filter = (
             f"[{input_idx}:v]trim=start={start_time}:duration={duration},"
             f"setpts=PTS-STARTPTS,"
-            f"scale=w={target_w*2}:h={target_h*2}:force_original_aspect_ratio=increase,"
+            f"scale=w={target_w}:h={target_h}:force_original_aspect_ratio=increase,"
             f"crop={target_w}:{target_h}:(iw-{target_w})/2:(ih-{target_h})/2,"
-            f"zoompan=z='min(zoom+{zoom_speed},1.15)':d={int(duration*30)}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={target_w}x{target_h}:fps=30,"
             f"eq=contrast=1.1:saturation=1.15,"
             f"setsar=1,format=yuv420p[v{seg_idx}]"
         )
@@ -445,8 +443,7 @@ def combine_videos(video_paths: List[str], max_duration: float, max_clip_duratio
 
     print(colored(f"[+] Combining {len(valid_paths)} videos at {aspect_ratio} ({target_w}x{target_h})...", "blue"))
 
-    # Force max clip duration to 3 seconds max
-    effective_clip_duration = 3 if (max_clip_duration <= 0 or max_clip_duration > 3) else max_clip_duration
+    effective_clip_duration = max_clip_duration if max_clip_duration > 0 else 10
     target_duration_with_buffer = float(max_duration) + buffer_time
 
     use_ffmpeg = _ffmpeg_concat_clips(
