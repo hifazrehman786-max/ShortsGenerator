@@ -164,9 +164,9 @@ def generate():
             })
         
         voice = data.get("voice", "en_us_006")
-if not voice:
-    print(colored("[!] No voice was selected. Defaulting to \"en_us_006\"", "yellow"))
-    voice = "en_us_006"
+        if not voice:
+            print(colored("[!] No voice was selected. Defaulting to \"en_us_006\"", "yellow"))
+            voice = "en_us_006"
 
         script_template = data.get("scriptTemplate", "")
         selectedVideoUrls = data.get("selectedVideoUrls", [])
@@ -324,7 +324,7 @@ def search_and_download():
     valid_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4o-mini", "g4f"]
     ai_model = raw_model if raw_model in valid_models else "gpt-4o-mini"
 
-    voice = data.get("voice", "en_us_001")
+    voice = data.get("voice", "en_us_006")
     selectedVideoUrls = data.get("selectedVideoUrls", [])
     directVideoPaths = data.get("directVideoPaths", [])
     use_music = data.get("useMusic", False)
@@ -341,8 +341,8 @@ def search_and_download():
     image_durations = data.get("imageDurations", [])
 
     if not voice:
-        print(colored("[!] No voice was selected. Defaulting to \"en_us_001\"", "yellow"))
-        voice = "en_us_001"
+        print(colored("[!] No voice was selected. Defaulting to \"en_us_006\"", "yellow"))
+        voice = "en_us_006"
 
     videoClass = Shorts("", 1, ai_model, '', script_template=data.get("scriptTemplate", ""))
     videoClass.search_terms = search_terms
@@ -351,7 +351,7 @@ def search_and_download():
     videoClass.subtitle_template = subtitle_template
     videoClass.aspect_ratio = aspect_ratio
     videoClass.custom_subtitle = custom_subtitle
-    videoClass.clip_duration = int(data.get("clipDuration", 10))
+    videoClass.clip_duration = int(data.get("clipDuration", 3))
 
     if directVideoPaths and len(directVideoPaths) > 0:
         videoClass.video_paths = directVideoPaths
@@ -1496,10 +1496,11 @@ if __name__ == "__main__":
         clean_dir(os.path.join(os.path.dirname(__file__), "static/assets/subtitles/"))
 
         videoClass = Shorts(topic_subject, 1, "gpt-4o-mini", "")
+        videoClass.clip_duration = 3
         videoClass.GenerateScript()
         videoClass.GenerateSearchTerms()
         videoClass.DownloadVideos([])
-        videoClass.GenerateVoice("en_us_001")
+        videoClass.GenerateVoice("en_us_006")
         videoClass.CombineVideos()
         videoClass.GenerateMetadata()
         
