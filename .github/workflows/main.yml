@@ -53,4 +53,5 @@ jobs:
         with:
           name: Final-HD-Video
           path: Backend/static/generated_videos/*.mp4
+          retention-days: 2
           if-no-files-found: error
