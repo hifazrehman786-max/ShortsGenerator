@@ -35,7 +35,7 @@ def generate_response(prompt: str, ai_model: str) -> str:
         str: The response from the AI model.
     """
 
-    # Model name normalise / auto-fix karein taake ghalti na ho
+    # Model name normalise karein taake typo/invalid values par error na aaye
     model_key = str(ai_model).lower().strip()
 
     if model_key in ['g4f', 'gpt-4o-mini', 'gpt-4o', 'g4f-gemini']:
@@ -43,26 +43,26 @@ def generate_response(prompt: str, ai_model: str) -> str:
         from g4f import Provider
         g4f_client = G4FClient(provider=Provider.Gemini)
         response = g4f_client.chat.completions.create(
-            model="gemini-1.5-flash",
+            model="gemini-2.5-flash",
             messages=[{"role": "user", "content": prompt}],
             web_search=False
         )
         return response.choices[0].message.content
 
-    elif model_key in ['gemini', 'gemmini', 'google', 'gemini-1.5-flash', 'gemini-2.0-flash']:
+    elif model_key in ['gemini', 'gemmini', 'google', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash']:
         if client is None:
             raise ValueError("GOOGLE_API_KEY not configured")
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-2.5-flash',
             contents=prompt
         ).text
         return response
 
     else:
-        # Default fallback standard gemini call par bhej dein taake execution fail na ho
+        # Default fallback to gemini-2.5-flash
         if client:
             response = client.models.generate_content(
-                model='gemini-2.0-flash',
+                model='gemini-2.5-flash',
                 contents=prompt
             ).text
             return response
@@ -71,7 +71,7 @@ def generate_response(prompt: str, ai_model: str) -> str:
             from g4f import Provider
             g4f_client = G4FClient(provider=Provider.Gemini)
             response = g4f_client.chat.completions.create(
-                model="gemini-1.5-flash",
+                model="gemini-2.5-flash",
                 messages=[{"role": "user", "content": prompt}],
                 web_search=False
             )
