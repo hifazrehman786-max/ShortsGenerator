@@ -37,16 +37,22 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f Backend/requirements.txt ]; then pip install -r Backend/requirements.txt; fi
 
-      # 5. Dynamic Topic ke sath Video Generate Karein
+      # 5. Run Video Generator
       - name: Run Video Generator
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          TIKTOK_SESSION_ID: ${{ secrets.TIKTOK_SESSION_ID }}
+          TIKTOK_SESSION_ID: ${{ secrets.TIKTOK_SESSION_ID || '' }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY || '' }}
           IMAGEMAGICK_BINARY: /usr/bin/convert
         run: |
-          python Backend/main.py --cli --prompt "${{ github.event.inputs.prompt }}"
+          PROMPT_INPUT="${{ github.event.inputs.prompt }}"
+          if [ -z "$PROMPT_INPUT" ]; then
+            PROMPT_INPUT="Interesting Facts"
+          fi
+          
+          python Backend/main.py --cli --prompt "$PROMPT_INPUT"
 
-      # 6. Generated Video ko Artifact ke tor par Upload Karein (Download ke liye)
+      # 6. Upload Generated Video
       - name: Upload Generated Video Artifact
         uses: actions/upload-artifact@v4
         with:
