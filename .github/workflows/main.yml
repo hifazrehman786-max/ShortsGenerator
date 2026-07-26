@@ -2,6 +2,11 @@ name: Generate Test Short
 
 on:
   workflow_dispatch:
+    inputs:
+      topic_prompt:
+        description: 'Video ka topic ya prompt likhein (e.g., Space facts)'
+        required: false
+        default: 'Random interesting facts'
 
 jobs:
   generate:
@@ -46,7 +51,7 @@ jobs:
           IMAGEMAGICK_BINARY: /usr/bin/convert
         run: |
           cd Backend
-          python main.py --cli
+          python main.py --prompt "${{ github.event.inputs.topic_prompt }}"
 
       - name: Save Generated Video
         uses: actions/upload-artifact@v4
