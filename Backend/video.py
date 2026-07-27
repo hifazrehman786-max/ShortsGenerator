@@ -5,7 +5,6 @@ import json
 import subprocess
 import requests
 import srt_equalizer
-import assemblyai as aai
 from uuid import uuid4
 
 from settings import *
@@ -21,10 +20,9 @@ from dotenv import load_dotenv
 from datetime import timedelta
 from moviepy.video.fx.all import crop
 from moviepy.video.tools.subtitles import SubtitlesClip
+from faster_whisper import WhisperModel
 
 load_dotenv("../.env")
-
-ASSEMBLY_AI_API_KEY = os.getenv("ASSEMBLY_AI_API_KEY")
 
 
 def save_video(video_url: str, directory: str = "static/assets/temp") -> str:
@@ -56,29 +54,26 @@ def save_video(video_url: str, directory: str = "static/assets/temp") -> str:
         return None
 
 
-def __generate_subtitles_assemblyai(audio_path: str, voice: str) -> str:
-    language_mapping = {
-        "br": "pt",
-        "id": "en",
-        "jp": "ja",
-        "kr": "ko",
-    }
+def __generate_subtitles_whisper(audio_path: str) -> str:
+    # Whisper model load karein (pehli baar run hone par download hoga)
+    model = WhisperModel("base", device="cpu", compute_type="int8")
+    
+    # Transcription aur word-level timestamps nikalna
+    segments, info = model.transcribe(audio_path, word_timestamps=True)
+    
+    words = []
+    for segment in segments:
+        if segment.words:
+            for word in segment.words:
+                words.append({
+                    "text": word.word.strip(),
+                    "start": int(word.start * 1000),
+                    "end": int(word.end * 1000)
+                })
 
-    if voice in language_mapping:
-        lang_code = language_mapping[voice]
-    else:
-        lang_code = voice
+    if not words:
+        return ""
 
-    aai.settings.api_key = ASSEMBLY_AI_API_KEY
-    config = aai.TranscriptionConfig(language_code=lang_code)
-    transcriber = aai.Transcriber(config=config)
-    transcript = transcriber.transcribe(audio_path)
-
-    # Fallback to standard srt export if word timestamps are missing
-    if not hasattr(transcript, 'words') or not transcript.words:
-        return transcript.export_subtitles_srt()
-
-    words = transcript.words
     subtitles = []
     chunk_size = 4  # 4 words per line for optimal Short/Reel readability
     chunks = [words[i:i + chunk_size] for i in range(0, len(words), chunk_size)]
@@ -92,11 +87,11 @@ def __generate_subtitles_assemblyai(audio_path: str, voice: str) -> str:
     counter = 1
     for chunk in chunks:
         for i, active_word in enumerate(chunk):
-            start_time_ms = active_word.start
+            start_time_ms = active_word["start"]
             if i < len(chunk) - 1:
-                end_time_ms = chunk[i + 1].start
+                end_time_ms = chunk[i + 1]["start"]
             else:
-                end_time_ms = active_word.end + 150
+                end_time_ms = active_word["end"] + 150
 
             start_time = format_time(start_time_ms)
             end_time = format_time(end_time_ms)
@@ -105,9 +100,9 @@ def __generate_subtitles_assemblyai(audio_path: str, voice: str) -> str:
             line_words = []
             for j, w in enumerate(chunk):
                 if j == i:
-                    line_words.append(f'<font color="#FFFF00"><b>{w.text}</b></font>')
+                    line_words.append(f'<font color="#FFFF00"><b>{w["text"]}</b></font>')
                 else:
-                    line_words.append(w.text)
+                    line_words.append(w["text"])
 
             line = " ".join(line_words)
             subtitles.append(f"{counter}\n{start_time} --> {end_time}\n{line}\n")
@@ -116,82 +111,16 @@ def __generate_subtitles_assemblyai(audio_path: str, voice: str) -> str:
     return "\n".join(subtitles)
 
 
-def __generate_subtitles_locally(audio_path: str, sentences: List[str], voice: str, sentence_durations: Optional[List[float]] = None) -> str:
-    def convert_to_srt_time_format(total_seconds):
-        if total_seconds < 0:
-            total_seconds = 0
-        hours = int(total_seconds // 3600)
-        minutes = int((total_seconds % 3600) // 60)
-        seconds = int(total_seconds % 60)
-        millis = int(round((total_seconds - int(total_seconds)) * 1000))
-        if millis == 1000:
-            millis = 0
-            seconds += 1
-        if seconds == 60:
-            seconds = 0
-            minutes += 1
-        if minutes == 60:
-            minutes = 0
-            hours += 1
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d},{millis:03d}"
-
-    try:
-        probe_clip = AudioFileClip(audio_path)
-        total_duration = float(probe_clip.duration)
-        probe_clip.close()
-    except Exception as e:
-        print(colored(f"[-] Could not probe audio for subtitle timing: {e}", "yellow"))
-        total_duration = max(1.0, len(sentences) * 3.0)
-
-    if not sentences:
-        return ""
-
-    cursor = 0.0
-    subtitles = []
-    for i, sentence in enumerate(sentences, start=1):
-        if sentence_durations and i - 1 < len(sentence_durations):
-            share = sentence_durations[i - 1]
-        else:
-            s_clean = sentence.strip()
-            weight = max(1.0, len(s_clean.split()) if s_clean else 1.0)
-            total_weight = sum(max(1.0, len(s.strip().split())) for s in sentences if s.strip())
-            share = (weight / max(total_weight, 1.0)) * total_duration
-        end_time = cursor + share
-        if i == len(sentences):
-            end_time = total_duration
-        subtitle_entry = (
-            f"{i}\n"
-            f"{convert_to_srt_time_format(cursor)} --> {convert_to_srt_time_format(end_time)}\n"
-            f"{sentence.strip()}\n"
-        )
-        subtitles.append(subtitle_entry)
-        cursor = end_time
-
-    return "\n".join(subtitles)
-
-
 def generate_subtitles(audio_path: str, sentences: List[str], voice: str, sentence_durations: Optional[List[float]] = None) -> str:
-    def equalize_subtitles(srt_path: str, max_chars: int = 42) -> None:
-        try:
-            srt_equalizer.equalize_srt_file(srt_path, srt_path, max_chars)
-        except Exception as e:
-            print(colored(f"[-] Subtitle equalization skipped: {e}", "yellow"))
-
     subtitles_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static", "assets", "subtitles"))
     os.makedirs(subtitles_dir, exist_ok=True)
     subtitles_path = os.path.join(subtitles_dir, f"{uuid.uuid4()}.srt")
 
-    if ASSEMBLY_AI_API_KEY is not None and ASSEMBLY_AI_API_KEY != "":
-        print(colored("[+] Creating subtitles using AssemblyAI (Word-by-Word Highlight)", "cyan"))
-        subtitles = __generate_subtitles_assemblyai(audio_path, voice)
-        with open(subtitles_path, "w", encoding="utf-8") as file:
-            file.write(subtitles or "")
-    else:
-        print(colored("[+] Creating subtitles locally with audio-aware timing", "blue"))
-        subtitles = __generate_subtitles_locally(audio_path, sentences, voice, sentence_durations)
-        with open(subtitles_path, "w", encoding="utf-8") as file:
-            file.write(subtitles or "")
-        equalize_subtitles(subtitles_path)
+    print(colored("[+] Creating subtitles using Local Whisper (Word-by-Word Highlight - Free)", "cyan"))
+    subtitles = __generate_subtitles_whisper(audio_path)
+    
+    with open(subtitles_path, "w", encoding="utf-8") as file:
+        file.write(subtitles or "")
 
     print(colored("[+] Subtitles generated.", "green"))
 
@@ -586,24 +515,9 @@ def _resolve_subtitle_template(template_value: str):
     return None
 
 
-def _get_font_family(font_path: str) -> str:
-    if not font_path or not os.path.exists(font_path):
-        return "Arial"
-    try:
-        result = subprocess.run(
-            ["fc-scan", "--format", "%{family}", font_path],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip().split(",")[0]
-    except Exception:
-        pass
-    return os.path.splitext(os.path.basename(font_path))[0]
-
-
 def generate_video(
     combined_video_path: str,
-    tgs_path: str, # Note: keeping parameter names consistent or using tts_path as passed
+    tgs_path: str,
     tts_path: str,
     subtitles_path: str,
     threads: int,
@@ -657,8 +571,6 @@ def generate_video(
     generated_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static", "generated_videos"))
     os.makedirs(generated_dir, exist_ok=True)
 
-    # Bypass FFmpeg strict subtitles filter to prevent boring or unstyled text rendering issues, 
-    # using MoviePy's dynamic SubtitlesClip renderer instead for vibrant styling.
     print(colored("[+] Using MoviePy SubtitlesClip renderer for rich formatting...", "blue"))
 
     def generator(txt):
