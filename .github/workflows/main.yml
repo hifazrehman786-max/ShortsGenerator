@@ -34,6 +34,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install faster-whisper
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f Backend/requirements.txt ]; then pip install -r Backend/requirements.txt; fi
 
@@ -43,7 +44,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TIKTOK_SESSION_ID: ${{ secrets.TIKTOK_SESSION_ID }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY || '' }}
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY || '' }}   # <-- YE LINE NAYI ADD KI HAI
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY || '' }}
           IMAGEMAGICK_BINARY: /usr/bin/convert
         run: |
           PROMPT_INPUT="${{ github.event.inputs.prompt }}"
