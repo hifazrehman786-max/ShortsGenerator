@@ -100,7 +100,7 @@ interface MagicSyncBusiness {
 }
 
 const isLoading = ref(false);
-const API_URL = "http://localhost:8080";
+const API_URL = "";
 
 // MagicSync multi-business config
 const magicsyncBusinesses = useStorage<MagicSyncBusiness[]>("MAGICSYNC_BUSINESSES", [])

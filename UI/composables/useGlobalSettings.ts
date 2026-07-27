@@ -3,7 +3,7 @@ import { useStorage } from "@vueuse/core";
 
 export const useApiSettings = () => {
     const API_SETTINGS = useStorage("API_SETTINGS", {
-        URL: "http://localhost:8080",
+        URL: "",
     })
     return {
         API_SETTINGS

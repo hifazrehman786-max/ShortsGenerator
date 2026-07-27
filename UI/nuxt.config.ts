@@ -1,7 +1,8 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   ssr: false,
-  devtools: { enabled: true },
+  devtools: { enabled: false },
+  telemetry: false,
   devServer: {
     port: 5000,
     host: "0.0.0.0",
@@ -10,13 +11,16 @@ export default defineNuxtConfig({
     server: {
       allowedHosts: true,
       hmr: { clientPort: 443, protocol: "wss" },
+      proxy: {
+        "/api": { target: "http://localhost:8080", changeOrigin: true },
+        "/static": { target: "http://localhost:8080", changeOrigin: true },
+      },
     },
   },
   modules: [
     "@bg-dev/nuxt-naiveui",
     "@vueuse/nuxt",
     "@nuxtjs/tailwindcss",
-    "@nuxt/content",
     "nuxt-icon",
     "@pinia/nuxt",
     "@unocss/nuxt",
@@ -27,11 +31,6 @@ export default defineNuxtConfig({
   tailwindcss: {
     exposeConfig: {
       write: true,
-    },
-  },
-  content: {
-    markdown: {
-      anchorLinks: false,
     },
   },
   i18n: {

@@ -69,7 +69,7 @@ interface ProfileAnalysis {
 
 const { saveProfile, getProfile, saveAudit, getAudit, savePosts, getPostsByCampaign, saveEngagementSuggestions, getEngagementByCampaign, saveCampaign, getCampaign, getAllCampaigns, saveScrapedSite, getScrapedSite } = useIndexedDB()
 
-const API_URL = "http://localhost:8080"
+const API_URL = ""
 const activeTab = ref<'search' | 'campaigns'>('search')
 const selectedCampaignId = ref<string | null>(null)
 

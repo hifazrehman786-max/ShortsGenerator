@@ -20,7 +20,7 @@ interface Step {
   action?: () => void; // Function to execute when step is active
 }
 const router = useRouter();
-const API_URL = "http://localhost:8080";
+const API_URL = "";
 
 interface MagicSyncAccount {
   platform: string
