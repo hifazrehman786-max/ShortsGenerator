@@ -105,7 +105,7 @@ def check_env_vars() -> None:
     """
     try:
         required_vars = ["PEXELS_API_KEY", "IMAGEMAGICK_BINARY"]
-        missing_vars = [var + os.getenv(var)  for var in required_vars if os.getenv(var) is None or (len(os.getenv(var)) == 0)]  
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
 
         if missing_vars:
             missing_vars_str = ", ".join(missing_vars)

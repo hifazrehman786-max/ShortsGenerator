@@ -33,19 +33,31 @@ from apiclient.errors import HttpError
 from flask import Flask, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 from moviepy.config import change_settings
-from classes.instagram_downloader import InstagramDownloader
-from leadgen.adapters.devtools_adapter import DevToolsAdapter
-from leadgen.enrichment import (
-    enrich_campaign_description, enrich_campaign_with_website, 
-    enhance_profile_analysis, find_related_niche_queries, 
-    suggest_engagement, analyze_competitor, analyze_viral_post, 
-    generate_lead_keywords, generate_engagement_keywords, 
-    generate_synthetic_leads, qualify_search_results
-)
-from leadgen.campaign_store import (
-    create_campaign, get_campaigns, get_campaign, delete_campaign, 
-    add_lead, get_leads, add_competitor, remove_competitor, add_viral_post
-)
+try:
+    from classes.instagram_downloader import InstagramDownloader
+    _HAS_INSTAGRAM = True
+except Exception as _e:
+    print(colored(f"[!] Instagram downloader unavailable: {_e}", "yellow"))
+    _HAS_INSTAGRAM = False
+    InstagramDownloader = None
+
+try:
+    from leadgen.adapters.devtools_adapter import DevToolsAdapter
+    from leadgen.enrichment import (
+        enrich_campaign_description, enrich_campaign_with_website,
+        enhance_profile_analysis, find_related_niche_queries,
+        suggest_engagement, analyze_competitor, analyze_viral_post,
+        generate_lead_keywords, generate_engagement_keywords,
+        generate_synthetic_leads, qualify_search_results
+    )
+    from leadgen.campaign_store import (
+        create_campaign, get_campaigns, get_campaign, delete_campaign,
+        add_lead, get_leads, add_competitor, remove_competitor, add_viral_post
+    )
+    _HAS_LEADGEN = True
+except Exception as _e:
+    print(colored(f"[!] Leadgen module unavailable: {_e}", "yellow"))
+    _HAS_LEADGEN = False
 
 # Set environment variables
 SESSION_ID = os.getenv("TIKTOK_SESSION_ID")
@@ -85,6 +97,14 @@ def create_folders():
 
 create_folders()
 
+
+@app.before_request
+def _guard_optional_modules():
+    """Return 503 for routes that depend on optional modules when those modules failed to load."""
+    if request.path.startswith("/api/leadgen") and not _HAS_LEADGEN:
+        return jsonify({"status": "error", "message": "Leadgen module is not available in this environment."}), 503
+
+
 # Instagram video download endpoint
 @app.route("/api/instagram/download", methods=["POST"])
 def download_instagram_video():
@@ -97,6 +117,12 @@ def download_instagram_video():
                 "status": "error",
                 "message": "No Instagram URL provided",
             }), 400
+
+        if not _HAS_INSTAGRAM or InstagramDownloader is None:
+            return jsonify({
+                "status": "error",
+                "message": "Instagram downloader is not available in this environment.",
+            }), 503
 
         downloader = InstagramDownloader(
             output_path=os.path.join(os.path.dirname(__file__), "static/generated_videos/instagram"),
@@ -422,9 +448,16 @@ def search_and_download():
     else:
         final_video_raw = videoClass.get_final_video_path
 
-    final_video_path = "/static" + final_video_raw.split("/static")[1]
-    final_audio_path = "/static" + videoClass.get_tts_path.split("/static")[1] if videoClass.get_tts_path else None
-    final_subtitles_path = "/static" + videoClass.get_subtitles_path.split("/static")[1] if videoClass.get_subtitles_path else None
+    def _to_static_url(path: str) -> str:
+        if not path:
+            return None
+        if "/static" in path:
+            return "/static" + path.split("/static", 1)[1]
+        return "/" + path.lstrip("/")
+
+    final_video_path = _to_static_url(final_video_raw)
+    final_audio_path = _to_static_url(videoClass.get_tts_path)
+    final_subtitles_path = _to_static_url(videoClass.get_subtitles_path)
 
     return jsonify({
         "status": "success",

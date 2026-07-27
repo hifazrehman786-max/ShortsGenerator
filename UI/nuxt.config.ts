@@ -2,6 +2,16 @@
 export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: true },
+  devServer: {
+    port: 5000,
+    host: "0.0.0.0",
+  },
+  vite: {
+    server: {
+      allowedHosts: true,
+      hmr: { clientPort: 443, protocol: "wss" },
+    },
+  },
   modules: [
     "@bg-dev/nuxt-naiveui",
     "@vueuse/nuxt",

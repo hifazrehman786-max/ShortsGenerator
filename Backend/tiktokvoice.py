@@ -7,6 +7,7 @@
 # --- MODIFIED VERSION --- #
 
 import base64
+import json
 import requests
 import threading
 
@@ -167,12 +168,35 @@ def tts(
 
     # creating the audio file
     try:
+        def _parse_audio_base64(raw_bytes: bytes) -> str:
+            """Parse base64 audio data from TikTok TTS API response."""
+            try:
+                data = json.loads(raw_bytes)
+                # Endpoint 0: {"status_code":0,"data":{"v_str":"<base64>",...}}
+                if "data" in data and "v_str" in data["data"]:
+                    return data["data"]["v_str"]
+                # Endpoint 1: {"success":true,"audio":"data:audio/mpeg;base64,<base64>"}
+                if "audio" in data:
+                    audio_field = data["audio"]
+                    if "," in audio_field:
+                        return audio_field.split(",", 1)[1]
+                    return audio_field
+                # Generic fallback: find first long base64-looking value
+                for v in data.values():
+                    if isinstance(v, str) and len(v) > 100:
+                        return v
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                pass
+            # Last resort: original fragile parsing (kept as ultimate fallback)
+            try:
+                return str(raw_bytes).split('"')[5]
+            except IndexError:
+                pass
+            raise ValueError("Could not parse base64 audio from TTS response")
+
         if len(text) < TEXT_BYTE_LIMIT:
             audio = generate_audio((text), voice)
-            if current_endpoint == 0:
-                audio_base64_data = str(audio).split('"')[5]
-            else:
-                audio_base64_data = str(audio).split('"')[3].split(",")[1]
+            audio_base64_data = _parse_audio_base64(audio)
 
             if audio_base64_data == "error":
                 print(colored("[-] This voice is unavailable right now", "red"))
@@ -186,14 +210,11 @@ def tts(
             # Define a thread function to generate audio for each text part
             def generate_audio_thread(text_part, index):
                 audio = generate_audio(text_part, voice)
-                if current_endpoint == 0:
-                    base64_data = str(audio).split('"')[5]
-                else:
-                    base64_data = str(audio).split('"')[3].split(",")[1]
+                base64_data = _parse_audio_base64(audio)
 
-                if audio_base64_data == "error":
+                if base64_data == "error":
                     print(colored("[-] This voice is unavailable right now", "red"))
-                    return "error"
+                    return
 
                 audio_base64_data[index] = base64_data
 

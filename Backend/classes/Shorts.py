@@ -322,7 +322,7 @@ class Shorts:
 
                 tts_settings = get_tts_settings()
                 fileId = uuid4()
-                supertonic_path = os.path.join(temp_dir_path, f"{fileId}.mp3")
+                supertonic_path = os.path.join(temp_dir_path, f"{fileId}.wav")
 
                 result = tts_with_fallback(
                     self.final_script,
@@ -467,9 +467,9 @@ class Shorts:
                 music_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static", "assets", "music"))
                 if custom_song_path:
                     candidate = os.path.join(music_dir, custom_song_path)
-                    song_path = candidate if os.path.exists(candidate) else choose_random_song()
+                    song_path = candidate if os.path.exists(candidate) else get_random_song()
                 else:
-                    song_path = choose_random_song()
+                    song_path = get_random_song()
 
             if ffmpeg_add_music_to_video(original_video_path, song_path, output_path, volume=0.1):
                 self.final_music_video_path = output_filename

@@ -517,7 +517,6 @@ def _resolve_subtitle_template(template_value: str):
 
 def generate_video(
     combined_video_path: str,
-    tgs_path: str,
     tts_path: str,
     subtitles_path: str,
     threads: int,
