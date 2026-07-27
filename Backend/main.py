@@ -118,7 +118,7 @@ def download_instagram_video():
         }), 500
 
 
-# Generation Endpoint (WITH AUTO AI-MODEL FALLBACK)
+# Generation Endpoint (WITH AUTO AI-MODEL FALLBACK & HIGHLIGHTED SUBTITLES)
 @app.route("/api/generate", methods=["POST"])
 def generate():
     try:
@@ -144,9 +144,9 @@ def generate():
 
         n_threads = data.get('threads')
         
-        # --- SUBTITLES FIX: Extracting subtitle parameters ---
+        # --- SUBTITLES CONFIGURATION (Word-by-Word Highlighting) ---
         subtitles_position = data.get('subtitlesPosition', 'center,bottom')
-        subtitle_template = data.get('subtitleTemplate', 'classic')
+        subtitle_template = data.get('subtitleTemplate', 'highlight') # Defaulting to dynamic highlight
         custom_subtitle = data.get('customSubtitle', '')
         # -----------------------------------------------------
 
@@ -184,11 +184,11 @@ def generate():
         videoClass = Shorts(video_subject, paragraph_number, ai_model, custom_prompt, script_template=script_template)
         videoClass.clip_duration = clip_duration
         
-        # --- SUBTITLES FIX: Assigning parameters to videoClass ---
+        # --- PASSING SUBTITLE SETTINGS TO CLASS ---
         videoClass.subtitles_position = subtitles_position
         videoClass.subtitle_template = subtitle_template
         videoClass.custom_subtitle = custom_subtitle
-        # ---------------------------------------------------------
+        # -----------------------------------------
         
         # Generate script & search terms
         videoClass.GenerateScript()
@@ -253,7 +253,12 @@ def generate():
                 except Exception as e:
                     print(colored(f"[-] YouTube upload error: {str(e)}", "red"))
 
-        videoClass.AddMusic(use_music)
+        # Add background music safely
+        try:
+            videoClass.AddMusic(use_music)
+        except Exception as music_err:
+            print(colored(f"[-] Warning adding music: {music_err}", "yellow"))
+
         print(colored(f"[+] Video generated: {videoClass.get_final_video_path}!", "green"))
         videoClass.Stop()
 
@@ -341,7 +346,7 @@ def search_and_download():
     use_music = data.get("useMusic", False)
 
     subtitles_position = data.get("subtitlesPosition", "center,bottom")
-    subtitle_template = data.get("subtitleTemplate", "classic")
+    subtitle_template = data.get("subtitleTemplate", "highlight") # Word-by-word highlight enabled by default
     aspect_ratio = data.get("aspectRatio", "9:16")
     custom_subtitle = data.get("customSubtitle", "")
     custom_audio_path = data.get("customAudioPath", "")
@@ -398,7 +403,10 @@ def search_and_download():
     videoClass.GenerateMetadata()
     
     if use_music:
-        videoClass.AddMusic(True)
+        try:
+            videoClass.AddMusic(True)
+        except Exception as music_err:
+            print(colored(f"[-] Warning adding music: {music_err}", "yellow"))
 
     videoClass.Stop()
 
@@ -1508,12 +1516,24 @@ if __name__ == "__main__":
 
         videoClass = Shorts(topic_subject, 1, "gpt-4o-mini", "")
         videoClass.clip_duration = 3
+        
+        # --- CLI SUBTITLE & HIGHLIGHT SETTINGS ---
+        videoClass.subtitle_template = "highlight"
+        videoClass.subtitles_position = "center,bottom"
+        
         videoClass.GenerateScript()
         videoClass.GenerateSearchTerms()
         videoClass.DownloadVideos([])
         videoClass.GenerateVoice("en_us_006")
         videoClass.CombineVideos()
         videoClass.GenerateMetadata()
+        
+        try:
+            videoClass.AddMusic(True)
+        except Exception as music_err:
+            print(colored(f"[-] Warning adding music in CLI: {music_err}", "yellow"))
+            
+        videoClass.Stop()
         
         print(colored(f"[✔] Video generated successfully at: {videoClass.get_final_video_path}", "green"))
     else:
