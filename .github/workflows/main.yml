@@ -54,10 +54,11 @@ jobs:
           
           python Backend/main.py --cli --prompt "$PROMPT_INPUT"
 
-      # 6. Upload Generated Video (Recursive search for .mp4 files including subfolders)
+      # 6. Upload Generated Video
       - name: Upload Generated Video Artifact
         uses: actions/upload-artifact@v4
         with:
           name: generated-short-video
-          path: Backend/static/generated_videos/**/*.mp4
+          path: |
+            **/*.mp4
           if-no-files-found: warn
