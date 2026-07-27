@@ -24,7 +24,6 @@ class Shorts:
     5. Convert Text-to-Speech [DONE]
     6. Combine Videos [DONE]
     7. Combine Videos with the Text-to-Speech [DONE]
-    7. Combine Videos with the Text-to-Speech [DONE]
     """
     # Buffer time in seconds after voice audio ends
     VIDEO_END_BUFFER = 3.0
