@@ -355,7 +355,6 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
 
     video_durations = [_ffprobe_duration(p) for p in inputs]
     
-    # Smart Dynamic Clip Duration
     base_max = float(max_clip_duration) if max_clip_duration > 0 else 10.0
     effective_max_clip = max(6.0, min(base_max, 12.0))
 
@@ -602,107 +601,9 @@ def _get_font_family(font_path: str) -> str:
     return os.path.splitext(os.path.basename(font_path))[0]
 
 
-def _ffmpeg_render_with_subtitles(
-    video_path: str,
-    audio_path: str,
-    subtitles_path: str,
-    output_path: str,
-    font_path: str,
-    fontsize: int,
-    color: str,
-    stroke_color: str,
-    stroke_width: int,
-    position: str,
-    target_w: int,
-    target_h: int,
-    buffer_time: float = 3.0,
-) -> bool:
-    if not video_path or not os.path.exists(video_path):
-        return False
-    if not audio_path or not os.path.exists(audio_path):
-        return False
-    if not subtitles_path or not os.path.exists(subtitles_path):
-        return False
-
-    def hex_to_ass(hex_color: str) -> str:
-        if not hex_color:
-            return "&H00FFFFFF"
-        h = str(hex_color).lstrip("#")
-        if len(h) == 3:
-            h = "".join(c * 2 for c in h)
-        if len(h) < 6:
-            h = h.zfill(6)
-        return f"&H00{h[4:6]}{h[2:4]}{h[0:2]}"
-
-    primary = hex_to_ass(color)
-    outline = hex_to_ass(stroke_color)
-
-    pos_map = {
-        "center,bottom": 2,
-        "center,center": 5,
-        "center,top": 8,
-    }
-    alignment = pos_map.get(position, 2)
-
-    font_family = _get_font_family(font_path)
-    font_dir = os.path.dirname(os.path.abspath(font_path)) if font_path else ""
-
-    ass_playres_y = 288
-    fontsize_ass = max(12, round(fontsize * ass_playres_y / target_h))
-    stroke_width_ass = max(0, round(stroke_width * ass_playres_y / target_h))
-
-    ass_style = (
-        f"FontName={font_family},"
-        f"FontSize={fontsize_ass},"
-        f"PrimaryColour={primary},"
-        f"OutlineColour={outline},"
-        f"Outline={stroke_width_ass},"
-        f"BorderStyle=1,"
-        f"Alignment={alignment}"
-    )
-
-    escaped_style = ass_style.replace(",", "\\,").replace(":", "\\:")
-    safe_subs = str(subtitles_path or "").replace(":", "\\:")
-    safe_fontdir = str(font_dir or "").replace(":", "\\:")
-
-    audio_duration = _ffprobe_duration(audio_path)
-    total_duration = audio_duration + buffer_time if audio_duration > 0 else 0
-
-    trim_filter = f",trim=duration={total_duration},setpts=PTS-STARTPTS" if total_duration > 0 else ""
-    video_filter = f"subtitles={safe_subs}:fontsdir={safe_fontdir}:original_size={target_w}x{target_h}:force_style={escaped_style}{trim_filter}"
-
-    cmd = [
-        "ffmpeg", "-y", "-hwaccel", "auto",
-        "-i", video_path,
-        "-i", audio_path,
-        "-vf", video_filter,
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "23",
-        "-pix_fmt", "yuv420p",
-        "-c:a", "aac",
-        "-map", "0:v:0",
-        "-map", "1:a:0",
-        "-movflags", "+faststart",
-        output_path,
-    ]
-
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        if result.returncode != 0:
-            print(colored(f"[-] ffmpeg subtitle render failed: {result.stderr[-500:]}", "yellow"))
-            return False
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            print(colored("[+] Video rendered with subtitles (fast ffmpeg path).", "green"))
-            return True
-        return False
-    except Exception as e:
-        print(colored(f"[-] ffmpeg subtitle render exception: {e}", "yellow"))
-        return False
-
-
 def generate_video(
     combined_video_path: str,
+    tgs_path: str, # Note: keeping parameter names consistent or using tts_path as passed
     tts_path: str,
     subtitles_path: str,
     threads: int,
@@ -711,7 +612,7 @@ def generate_video(
     aspect_ratio: str = "9:16",
     buffer_time: float = 3.0,
 ) -> str:
-    print(colored("[+] Starting video generation...", "green"))
+    print(colored("[+] Starting video generation with MoviePy Subtitles Renderer...", "green"))
 
     globalSettings = get_settings()
     target_w, target_h = get_aspect_ratio_dimensions(aspect_ratio)
@@ -756,26 +657,9 @@ def generate_video(
     generated_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static", "generated_videos"))
     os.makedirs(generated_dir, exist_ok=True)
 
-    fast_video_name = os.path.join(generated_dir, f"{uuid4()}-final.mp4")
-    print(colored("[+] Trying ffmpeg subtitle render (fast path)...", "blue"))
-    if _ffmpeg_render_with_subtitles(
-        combined_video_path,
-        tts_path,
-        subtitles_path,
-        fast_video_name,
-        font_path,
-        fontsize,
-        color,
-        stroke_color,
-        stroke_width,
-        f"{horizontal_subtitles_position},{vertical_subtitles_position}",
-        target_w,
-        target_h,
-        buffer_time=buffer_time,
-    ):
-        return fast_video_name
-
-    print(colored("[*] Falling back to MoviePy subtitle render.", "yellow"))
+    # Bypass FFmpeg strict subtitles filter to prevent boring or unstyled text rendering issues, 
+    # using MoviePy's dynamic SubtitlesClip renderer instead for vibrant styling.
+    print(colored("[+] Using MoviePy SubtitlesClip renderer for rich formatting...", "blue"))
 
     def generator(txt):
         return TextClip(
@@ -822,7 +706,7 @@ def generate_video(
         subtitles = subtitles.set_duration(target_duration)
         result = CompositeVideoClip([
             base_video,
-            subtitles.set_pos((horizontal_subtitles_position, vertical_subtitles_position))
+            subtitles.set_pos((horizontal_subtitles_position.strip(), vertical_subtitles_position.strip()))
         ]).set_duration(target_duration)
     else:
         result = base_video.set_duration(target_duration)
