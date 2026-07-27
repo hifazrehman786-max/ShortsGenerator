@@ -143,7 +143,12 @@ def generate():
             ai_model = "gpt-4o-mini"
 
         n_threads = data.get('threads')
-        subtitles_position = data.get('subtitlesPosition')
+        
+        # --- SUBTITLES FIX: Extracting subtitle parameters ---
+        subtitles_position = data.get('subtitlesPosition', 'center,bottom')
+        subtitle_template = data.get('subtitleTemplate', 'classic')
+        custom_subtitle = data.get('customSubtitle', '')
+        # -----------------------------------------------------
 
         use_music = data.get('useMusic', False)
         automate_youtube_upload = data.get('automateYoutubeUpload', False)
@@ -178,6 +183,12 @@ def generate():
 
         videoClass = Shorts(video_subject, paragraph_number, ai_model, custom_prompt, script_template=script_template)
         videoClass.clip_duration = clip_duration
+        
+        # --- SUBTITLES FIX: Assigning parameters to videoClass ---
+        videoClass.subtitles_position = subtitles_position
+        videoClass.subtitle_template = subtitle_template
+        videoClass.custom_subtitle = custom_subtitle
+        # ---------------------------------------------------------
         
         # Generate script & search terms
         videoClass.GenerateScript()
