@@ -73,9 +73,47 @@ def __generate_subtitles_assemblyai(audio_path: str, voice: str) -> str:
     config = aai.TranscriptionConfig(language_code=lang_code)
     transcriber = aai.Transcriber(config=config)
     transcript = transcriber.transcribe(audio_path)
-    subtitles = transcript.export_subtitles_srt()
 
-    return subtitles
+    # Fallback to standard srt export if word timestamps are missing
+    if not hasattr(transcript, 'words') or not transcript.words:
+        return transcript.export_subtitles_srt()
+
+    words = transcript.words
+    subtitles = []
+    chunk_size = 4  # 4 words per line for optimal Short/Reel readability
+    chunks = [words[i:i + chunk_size] for i in range(0, len(words), chunk_size)]
+
+    def format_time(ms):
+        seconds, milliseconds = divmod(ms, 1000)
+        minutes, seconds = divmod(seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+        return f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d},{int(milliseconds):03d}"
+
+    counter = 1
+    for chunk in chunks:
+        for i, active_word in enumerate(chunk):
+            start_time_ms = active_word.start
+            if i < len(chunk) - 1:
+                end_time_ms = chunk[i + 1].start
+            else:
+                end_time_ms = active_word.end + 150
+
+            start_time = format_time(start_time_ms)
+            end_time = format_time(end_time_ms)
+
+            # Build line with current spoken word highlighted in yellow
+            line_words = []
+            for j, w in enumerate(chunk):
+                if j == i:
+                    line_words.append(f'<font color="#FFFF00"><b>{w.text}</b></font>')
+                else:
+                    line_words.append(w.text)
+
+            line = " ".join(line_words)
+            subtitles.append(f"{counter}\n{start_time} --> {end_time}\n{line}\n")
+            counter += 1
+
+    return "\n".join(subtitles)
 
 
 def __generate_subtitles_locally(audio_path: str, sentences: List[str], voice: str, sentence_durations: Optional[List[float]] = None) -> str:
@@ -144,16 +182,16 @@ def generate_subtitles(audio_path: str, sentences: List[str], voice: str, senten
     subtitles_path = os.path.join(subtitles_dir, f"{uuid.uuid4()}.srt")
 
     if ASSEMBLY_AI_API_KEY is not None and ASSEMBLY_AI_API_KEY != "":
-        print(colored("[+] Creating subtitles using AssemblyAI", "blue"))
+        print(colored("[+] Creating subtitles using AssemblyAI (Word-by-Word Highlight)", "cyan"))
         subtitles = __generate_subtitles_assemblyai(audio_path, voice)
+        with open(subtitles_path, "w", encoding="utf-8") as file:
+            file.write(subtitles or "")
     else:
         print(colored("[+] Creating subtitles locally with audio-aware timing", "blue"))
         subtitles = __generate_subtitles_locally(audio_path, sentences, voice, sentence_durations)
-
-    with open(subtitles_path, "w", encoding="utf-8") as file:
-        file.write(subtitles or "")
-
-    equalize_subtitles(subtitles_path)
+        with open(subtitles_path, "w", encoding="utf-8") as file:
+            file.write(subtitles or "")
+        equalize_subtitles(subtitles_path)
 
     print(colored("[+] Subtitles generated.", "green"))
 
@@ -317,7 +355,7 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
 
     video_durations = [_ffprobe_duration(p) for p in inputs]
     
-    # Smart Dynamic Clip Duration (Allowing clips to play naturally up to 10-12 seconds for high engagement)
+    # Smart Dynamic Clip Duration
     base_max = float(max_clip_duration) if max_clip_duration > 0 else 10.0
     effective_max_clip = max(6.0, min(base_max, 12.0))
 
@@ -337,7 +375,6 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
             if vid_dur <= 0:
                 vid_dur = effective_max_clip
 
-            # Dynamic length: let engaging clips play longer (up to full duration or max limit)
             allowed_dur = min(vid_dur, effective_max_clip)
             max_start_limit = max(0.0, vid_dur - allowed_dur)
             seg_start = random.uniform(0, max_start_limit) if max_start_limit > 0 else 0.0
@@ -363,7 +400,6 @@ def _ffmpeg_concat_clips(clip_paths: List[str], target_duration: float, target_w
     filter_parts = []
 
     for seg_idx, (input_idx, start_time, duration) in enumerate(segments):
-        # Smooth cinematic scaling without aggressive annoying zoompan flickering
         scale_filter = (
             f"[{input_idx}:v]trim=start={start_time}:duration={duration},"
             f"setpts=PTS-STARTPTS,"
